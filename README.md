@@ -208,21 +208,21 @@ Every item below is one more layer sedimented into a default — a capability yo
 - **Cloud ASR**: Volcengine streaming ASR (bigasr), Tencent Cloud Hunyuan realtime ASR (Hy-ASR), iFlytek realtime ASR (RTASR), Alibaba Cloud Bailian (classic realtime / Qwen3 realtime / Fun-ASR-Flash file transcription), StepFun StepAudio (batch + realtime), Zhipu GLM-ASR, Xiaomi MiMo ASR, OrcaRouter audio-input Gemini, ElevenLabs Scribe, OpenAI-compatible batch transcription (OpenAI Whisper / Groq / SiliconFlow SenseVoice / OpenRouter / ZenMux), and Apple Speech (macOS).
 - **Local ASR**: bundled Qwen3-ASR (0.6B / 1.7B) via vendored `Open-Less/qwen-asr` (macOS); Windows Foundry Local Whisper and sherpa-onnx (experimental) variants.
 - **Polish providers**: Ark (Volcengine), DeepSeek, OpenAI, Google Gemini, Codex OAuth, SiliconFlow, Atlas Cloud, Xiaomi MiMo, Tencent Cloud TokenHub, CometAPI, OpenRouter, Requesty, OrcaRouter, Alibaba Cloud Coding Plan, CodingPlanX, MiniMax, StepFun, and OpenCode Zen — plus any OpenAI-compatible endpoint you bring.
-- **Four output modes**: raw, light polish, structured (**AI-prompt mode**), and formal. Plus a **translation hotkey** that converts speech directly into the configured target language ([#43](../../issues/43)).
-- **Selection-ask QA panel** — a separate hotkey opens a floating panel that runs voice Q&A against the highlighted text in any app ([#118](../../issues/118)).
+- **Four output modes**: raw, light polish, structured (**AI-prompt mode**), and formal. Plus a **translation hotkey** that converts speech directly into the configured target language ([#43](https://github.com/Open-Less/openless/issues/43)).
+- **Selection-ask QA panel** — a separate hotkey opens a floating panel that runs voice Q&A against the highlighted text in any app ([#118](https://github.com/Open-Less/openless/issues/118)).
 - **Main window**: Overview / History / Vocab / Style / Marketplace / Settings. Persistent tray icon, plus a mini status capsule that floats on screen and follows the display you are typing on (multi-monitor).
 - **Local model management** — manage on-disk local-ASR model storage from Settings.
 - **Multilingual UI** — Settings → Language switches between 简体中文 / 繁體中文 / English / 日本語 / 한국어 (auto-detected on first launch).
 - **In-app auto-update on the Tauri hosts** — Settings → About → Check; signed updater artifacts via the Tauri updater plugin on macOS, Windows, and Android. Linux deb/rpm packages have no in-app updater or AppImage manifest.
 - **Beta channel (opt-in)** — Settings → About → Join Beta channel exposes the latest pre-release build for manual download. Beta releases never reach Stable users automatically (see [Contributing workflow](#contributing-workflow)).
-- **Distribution channels** — direct DMG/EXE from [Releases](../../releases), Homebrew Cask (add the project tap first; see installation below), and a Windows installer. Linux deb/rpm packages attach to the shared Release only after device acceptance and an admin's release tag.
+- **Distribution channels** — direct DMG/EXE from [Releases](https://github.com/Open-Less/openless/releases), Homebrew Cask (add the project tap first; see installation below), and a Windows installer. Linux deb/rpm packages attach to the shared Release only after device acceptance and an admin's release tag.
 - **Single-instance lock** — prevents two OpenLess processes from racing the same hotkey edge.
 - Dictionary entries are injected as Volcengine ASR `context.hotwords` and as semantic hints during polish; hits accumulate per session.
 - Platform-native global hotkey: CGEventTap on macOS, low-level keyboard hook (`WH_KEYBOARD_LL`) on Windows.
 
 ## Download & install (end users)
 
-Go to [Releases](../../releases) and download:
+Go to [Releases](https://github.com/Open-Less/openless/releases) and download:
 
 - **macOS**: `OpenLess_<version>_aarch64.dmg` (Apple Silicon) or `OpenLess_<version>_x64.dmg` (Intel). Open it, drag the app to `/Applications`, **then run the following once in Terminal to bypass the Gatekeeper "damaged" warning** (the build is ad-hoc signed, not Apple-notarized):
   ```bash
@@ -408,7 +408,7 @@ See [AGENTS.md](AGENTS.md) for repository rules and [Architecture](docs/architec
 
 Planned but not yet shipped:
 
-- Cross-session style memory: polish learns the user's tone over time ([#46](../../issues/46)).
+- Cross-session style memory: polish learns the user's tone over time ([#46](https://github.com/Open-Less/openless/issues/46)).
 - Snippets (no UI or trigger logic yet).
 - History enhancements: copy button, search, re-polish, re-insert.
 - A "Paste last result" hotkey.

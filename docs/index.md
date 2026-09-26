@@ -1,6 +1,6 @@
 # OpenLess 文档入口
 
-状态：canonical；更新：2026-09-08。实现说明与当前源码保持一致；范围、接口合同和验收要求由各自文档维护。各专项文档的更新时间与状态单独标注。
+状态：canonical；更新：2026-09-26。实现说明与当前源码保持一致；范围、接口合同和验收要求由各自文档维护。各专项文档的更新时间与状态单独标注。
 
 ## 范围与架构
 
@@ -27,7 +27,6 @@
 
 - [macOS CI 与打包耗时](macos-build-performance.md)：基线日志、Rust 编译优化、缓存边界与仅 macOS 验证入口。
 - [CI 触发范围与缓存配额](ci-trigger-and-cache-policy.md)：改动范围门控、10 GB 缓存分配与维护、发版预热点。
-- [Android APK 编译耗时调研与实现](android-build-time-research-1103.md)：ABI 并行、缓存回写和发布验证。
 - [Android APK / 悬浮窗计划](android-mobile-apk-overlay-plan.md)（实施中）
 - [火山引擎 ASR 配置](volcengine-setup.md)
 - [讯飞（iflytek）ASR 配置](xfyun-asr.md)

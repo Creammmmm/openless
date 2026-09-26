@@ -213,21 +213,21 @@ OpenLess 只做一件事:**把语音变成可用的书面文字(尤其是 AI 提
 - **云端 ASR**:Volcengine 流式 ASR(bigasr)、腾讯云混元实时 ASR(Hy-ASR)、讯飞实时语音转写(RTASR)、阿里云百炼(经典实时 / Qwen3 实时 / Fun-ASR-Flash 录音文件)、阶跃星辰 StepAudio(批式 + 实时)、智谱 GLM-ASR、小米 MiMo ASR、OrcaRouter 音频输入 Gemini、ElevenLabs Scribe、OpenAI 兼容批量转写(OpenAI Whisper / Groq / 硅基流动 SenseVoice / OpenRouter / ZenMux),以及 Apple Speech(macOS)。
 - **本地 ASR**:通过 vendored 的 `Open-Less/qwen-asr` 内置 Qwen3-ASR(0.6B / 1.7B)(macOS);Windows 上的 Foundry Local Whisper 与 sherpa-onnx(实验性)变体。
 - **润色提供方**:Ark(火山方舟)、DeepSeek、OpenAI、Google Gemini、Codex OAuth、硅基流动、Atlas Cloud、小米 MiMo、腾讯云 TokenHub、CometAPI、OpenRouter、Requesty、OrcaRouter、阿里云 Coding Plan、CodingPlanX、MiniMax、StepFun、OpenCode Zen,以及你自带的任意 OpenAI 兼容端点。
-- **四种输出模式**:原文、轻度润色、结构化(**AI 提示词模式**)、正式。另有一个**翻译快捷键**,将语音直接转换为所配置的目标语言([#43](../../issues/43))。
-- **选区问答面板**——一个独立快捷键打开浮动面板,针对任意应用中被高亮选中的文本进行语音问答([#118](../../issues/118))。
+- **四种输出模式**:原文、轻度润色、结构化(**AI 提示词模式**)、正式。另有一个**翻译快捷键**,将语音直接转换为所配置的目标语言([#43](https://github.com/Open-Less/openless/issues/43))。
+- **选区问答面板**——一个独立快捷键打开浮动面板,针对任意应用中被高亮选中的文本进行语音问答([#118](https://github.com/Open-Less/openless/issues/118))。
 - **主窗口**:概览 / 历史 / 词典 / 风格 / 市场 / 设置。常驻托盘图标,以及一个浮于屏幕、并跟随你正在输入的显示器的迷你状态胶囊(多显示器)。
 - **本地模型管理**——在设置中管理本地 ASR 模型在磁盘上的存储。
 - **多语言界面**——设置 → 语言 可在 简体中文 / 繁體中文 / English / 日本語 / 한국어 之间切换(首次启动自动检测)。
 - **Tauri 宿主内自动更新**——macOS、Windows 与 Android 通过 设置 → 关于 → 检查 获取签名产物；Linux deb/rpm 不提供应用内更新或 AppImage 更新清单。
 - **Beta 频道(可选加入)**——设置 → 关于 → 加入 Beta 频道,可下载最新预发布版本进行手动安装。Beta 版本绝不会自动推送给 Stable 用户(见[贡献流程](#贡献流程))。
-- **分发渠道**——从 [Releases](../../releases) 直接下载 DMG/EXE、Homebrew Cask(须先添加项目 tap，见下方安装步骤)、Windows 安装包。Linux deb/rpm 在真机验收、管理员创建发版 tag 后附到共用 Release。
+- **分发渠道**——从 [Releases](https://github.com/Open-Less/openless/releases) 直接下载 DMG/EXE、Homebrew Cask(须先添加项目 tap，见下方安装步骤)、Windows 安装包。Linux deb/rpm 在真机验收、管理员创建发版 tag 后附到共用 Release。
 - **单实例锁**——防止两个 OpenLess 进程争抢同一个快捷键边沿。
 - 词典条目注入到支持热词的 ASR 提供方(Volcengine 的 `context.hotwords`、StepFun 的 `hotwords`、Whisper 兼容的 `prompt`(ZenMux 除外——其 JSON 协议不携带 `prompt`/`hotwords`)、百炼的 vocabulary_id),并在润色时作为语义提示;命中次数按会话累计。讯飞实时语音转写标准版没有请求级热词参数,需在讯飞控制台配置个性化热词。
 - 平台原生全局快捷键:macOS 上为 CGEventTap,Windows 上为低级键盘钩子(`WH_KEYBOARD_LL`)。
 
 ## 下载与安装(终端用户)
 
-前往 [Releases](../../releases) 下载:
+前往 [Releases](https://github.com/Open-Less/openless/releases) 下载:
 
 - **macOS**:`OpenLess_<version>_aarch64.dmg`(Apple Silicon)或 `OpenLess_<version>_x64.dmg`(Intel)。打开后将应用拖入 `/Applications`,**然后在终端执行一次以下命令,以绕过 Gatekeeper 的“已损坏”提示**(该构建为 ad-hoc 签名,未经 Apple 公证):
   ```bash
@@ -413,7 +413,7 @@ egui UI  ── Linux Adapter（无 Tauri/WebKitGTK）───┘
 
 已规划但尚未发布:
 
-- 跨会话风格记忆:润色随时间学习用户的语气([#46](../../issues/46))。
+- 跨会话风格记忆:润色随时间学习用户的语气([#46](https://github.com/Open-Less/openless/issues/46))。
 - 片段(Snippets,尚无 UI 或触发逻辑)。
 - 历史增强:复制按钮、搜索、重新润色、重新插入。
 - “粘贴上次结果”快捷键。
