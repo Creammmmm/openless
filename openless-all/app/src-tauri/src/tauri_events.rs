@@ -252,7 +252,9 @@ async fn forward_legacy_event(
                 ..
             } = &event.kind
             {
-                // 胶囊只展示Core语音快照。已开始的其它会话拥有共享窗口，旧Less终态不得盖掉它。
+                // The capsule shows only the Core voice snapshot. Other sessions that already
+                // started own the shared window, and an older session's terminal state must not
+                // overwrite it.
                 let current = backend.less_computer_active_session();
                 if !current.is_some_and(|current| current != *session_id)
                     && backend.snapshot().dictation.phase == DictationPhase::Idle

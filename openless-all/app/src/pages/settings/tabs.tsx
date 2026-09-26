@@ -1,5 +1,5 @@
-// 设置弹窗里每个侧栏 tab 对应的内容页。每个 tab 就是若干 section 卡片的纵向堆叠；
-// 真正的逻辑都在各 *Section 文件里，这里只负责"哪些 section 归到哪个 tab"。
+// Content page for each sidebar tab in the settings dialog. Each tab is a vertical stack of section cards;
+// the real logic lives in the *Section files — this only decides which sections belong to which tab.
 
 import { useTranslation } from 'react-i18next';
 import { useEffect, useRef, useState } from 'react';
@@ -37,7 +37,7 @@ import {
   type AdvancedPageId,
 } from './navigation';
 
-// 各 tab 共用的平台能力查询（决定桌面/移动、是否支持热键与自动更新等 gating）。
+// Platform capability query shared by all tabs (drives desktop/mobile and hotkey / auto-update gating).
 function usePlatformCaps(): PlatformCapabilities | null {
   const [platformCaps, setPlatformCaps] = useState<PlatformCapabilities | null>(null);
 
@@ -48,7 +48,7 @@ function usePlatformCaps(): PlatformCapabilities | null {
   return platformCaps;
 }
 
-// 录音与输入：从录音到落字，以及手机输入。
+// Recording & input: from recording to text insertion, plus phone input.
 export function GeneralTab() {
   const platformCaps = usePlatformCaps();
   const showRemoteInput = platformCaps?.platform === 'desktop';
@@ -81,7 +81,7 @@ export function AppearanceTab() {
   );
 }
 
-// AI 服务与模型：按当前管线和平台能力组织渠道、本地模型及网络设置。
+// AI services & models: organizes channels, local models, and network settings by current pipeline and platform capabilities.
 export function ServicesTab() {
   const { t } = useTranslation();
   const { prefs } = useHotkeySettings();
@@ -94,9 +94,9 @@ export function ServicesTab() {
   const selectedView = resolveServiceView(view, views);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // 语言模型 / 语音识别是必配项：tab 上挂状态点 —— 未配置红、已配置黄
-  // 。任何渠道增删改/启停后 ChannelList 会广播
-  // ol-channels-changed，这里即时重算。
+  // Language models / speech recognition are required config: the tab carries a status dot — red when
+  // unconfigured, yellow when configured. After any channel add/remove/edit/toggle ChannelList broadcasts
+  // ol-channels-changed and this recomputes immediately.
   const [requiredConfigured, setRequiredConfigured] = useState<{ llm: boolean; asr: boolean }>({
     llm: false,
     asr: false,
@@ -113,7 +113,7 @@ export function ServicesTab() {
           });
         })
         .catch(() => {
-          /* 读取失败保持上一次状态，不打扰用户 */
+          /* On read failure, keep the previous state and don't disturb the user */
         });
     };
     load();
@@ -173,7 +173,7 @@ export function ServicesTab() {
         })}
       </div>
       <div key={selectedView} ref={contentRef} className="ol-service-content">
-        {/* 渠道编辑器里的 LocalModelPicker 通过该上下文跳到本视图。 */}
+        {/* The LocalModelPicker inside the channel editor jumps to this view through this context. */}
         <LocalModelsNavContext.Provider value={() => setView('models')}>
           {selectedView === 'llm' && <ProvidersSection kind="llm" />}
           {selectedView === 'asr' && <ProvidersSection kind="asr" />}
@@ -196,7 +196,7 @@ export function ServicesTab() {
   );
 }
 
-// 隐私：本地优先说明 + 权限管理 · 数据存储。
+// Privacy: local-first explanation + permission management · data storage.
 export function PrivacyTab() {
   const { t } = useTranslation();
   return (
@@ -236,7 +236,7 @@ export function PrivacyTab() {
   );
 }
 
-// 实验功能在右栏各有一个子页；往返保留控制台草稿、检测状态和流式输出。
+// Experimental features each get a subpage in the right column; navigating back and forth preserves console drafts, test state, and streaming output.
 export function AdvancedTab({
   pages,
   page,
@@ -291,7 +291,7 @@ export function AdvancedTab({
   );
 }
 
-// 关于：版本信息 · 更新渠道 · 自动更新 —— 「我用的是什么版本、怎么更新」归一处。
+// About: version info · update channel · auto-update — "which version am I on and how do I update" in one place.
 export function AboutTab() {
   const platformCaps = usePlatformCaps();
   const showUpdateControls = platformCaps?.supportsAutoUpdate === true;

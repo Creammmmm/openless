@@ -62,7 +62,8 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
     // the direction-pad grid, and which category tab is selected there.
     private var clipboardSelectionMode = false
     // The fixed end and the moving end of the in-progress selection, set the
-    // first time an arrow key is pressed after "选择" turns on; cleared
+    // first time an arrow key is pressed after the "选择" (Select) key turns
+    // on; cleared
     // whenever selection mode turns off so the next selection starts fresh
     // from wherever the cursor happens to be then.
     private var clipboardSelectionAnchor = -1
@@ -136,7 +137,7 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
     private var strokeCode = ""
     private var strokeQueryEpoch = 0L
     // In-memory word-segmentation buffer: characters the user has marked with
-    // 分词 while composing a multi-character word. Never touches the actual
+    // the "分词" (segment) key while composing a multi-character word. Never touches the actual
     // input connection until the assembled word (or its final character) is
     // committed — see segmentStroke()/commitWord().
     private val wordSegments = mutableListOf<String>()
@@ -818,7 +819,7 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
             marginEnd = dp(8)
         })
 
-        // 保持和 Typeless 类似的五排结构：数字、字母三排、底部功能排。
+        // Five-row layout similar to Typeless: number row, three letter rows, bottom function row.
         addKeyboardRow(root, listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"))
         if (symbolMode) {
             addKeyboardRow(root, listOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\""))
@@ -1217,7 +1218,7 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
 
     /**
      * Renders the stroke candidate row: a leading "commit the whole word"
-     * button for any segments marked via 分词 (if present), followed by the
+     * button for any segments marked via the "分词" (segment) key (if present), followed by the
      * single-character candidates for the character currently being typed.
      */
     private fun renderCandidateRow(strokeMatches: List<String>) {
@@ -1273,8 +1274,8 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
      * "Show more candidates" overlay — a PopupWindow anchored below the
      * candidate row, wrapping the current full candidate/association list
      * (whichever is showing) into a flow of rows. A PopupWindow floats over
-     * the existing panel without resizing or displacing it, matching "不允许
-     * 推动下方按键或改变键盘高度".
+     * the existing panel without resizing or displacing it, matching the
+     * "must not push the keys below or change the keyboard height" rule.
      */
     private fun showCandidateOverlay(anchor: View) {
         if (candidateOverlayEntries.isEmpty()) return
@@ -1894,7 +1895,7 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
         toggleDictation()
     }
 
-    /** Commits the current character together with any segments already marked via 分词. */
+    /** Commits the current character together with any segments already marked via the "分词" (segment) key. */
     private fun commitStrokeCandidate(candidate: String) {
         // Picking anything other than the top-ranked result is a correction
         // — learn it, so this code favors `candidate` from now on. Picking
@@ -3584,7 +3585,8 @@ class OpenLessImeService : InputMethodService(), OpenLessOverlayBridge.OverlaySt
             val right = centerX + pillWidth / 2f
             val bottom = centerY + pillHeight * scale / 2f
             val radius = pillHeight * 0.5f
-            // 录音/思考状态只显示动画，完全移除胶囊背景；待机状态保留话筒按钮。
+            // Recording/thinking states show only the animation with the capsule background
+            // fully removed; the idle state keeps the mic button.
             if (!isRecording && !isProcessing) {
                 paint.color = idlePillColor
                 canvas.drawRoundRect(left, top, right, bottom, radius, radius, paint)

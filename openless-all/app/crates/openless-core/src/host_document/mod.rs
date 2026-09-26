@@ -1,6 +1,7 @@
-//! 与平台无关的文档窗口和词汇学习规则。
+//! Platform-independent document-window and vocabulary-learning rules.
 //!
-//! AX/IME/clipboard 读取仍由宿主实现；Core 只提供可测试的纯函数。
+//! AX/IME/clipboard reads stay in the host; the Core only provides testable
+//! pure functions.
 
 mod diff;
 mod window;

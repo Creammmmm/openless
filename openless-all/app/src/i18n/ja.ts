@@ -1,9 +1,9 @@
 import type { zhCN } from './zh-CN';
 import { en } from './en';
 
-// 日本語 (Beta) — AI 機械翻訳ベース。ネイティブ話者によるレビューを推奨。
-// 構造は zh-CN.ts に追従。新しい key を追加する場合は ja.ts / ko.ts も同時に
-// 更新してください（更新されない key は ...en で英語にフォールバックします）。
+// Japanese (Beta) — AI machine translation based; native-speaker review recommended.
+// Structure mirrors zh-CN.ts. When adding new keys, update ja.ts / ko.ts as well
+// (keys not updated fall back to English via ...en).
 export const ja: typeof zhCN = {
   ...en,
   cloudSyncE2ee: {

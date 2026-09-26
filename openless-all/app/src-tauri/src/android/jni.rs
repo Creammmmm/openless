@@ -628,8 +628,8 @@ pub mod android {
             .map_err(|error| format!("read SDK_INT: {error}"))
     }
 
-    /// 读取剪贴板当前的第一条纯文本内容，用于在粘贴后还原。
-    /// 失败或剪贴板为空时返回 None（不返回错误，避免阻塞主流程）。
+    /// Reads the first plain-text entry currently in the clipboard, used to restore after paste.
+    /// Returns None on failure or an empty clipboard (no error, to avoid blocking the main flow).
     pub fn get_primary_clip_text(env: &mut JNIEnv, context: &JObject) -> Option<String> {
         let clipboard_name = jobject_str(env, "clipboard").ok()?;
         let clipboard = env
@@ -682,7 +682,7 @@ pub mod android {
             .ok()
     }
 
-    /// 将指定文本写回剪贴板，用于 accessibility 粘贴后还原用户原有内容。
+    /// Writes the given text back to the clipboard, restoring the user's original content after accessibility paste.
     pub fn set_primary_clip_text(
         env: &mut JNIEnv,
         context: &JObject,

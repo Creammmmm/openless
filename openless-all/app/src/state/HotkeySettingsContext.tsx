@@ -124,8 +124,9 @@ export function HotkeySettingsProvider({ children }: { children: ReactNode }) {
         const handle = await listen<UserPreferences>('prefs:changed', (event) => {
           const nextPrefs = event.payload;
           if (!nextPrefs) return;
-          // 一次保存的广播先于其 IPC promise resolve 到达。若不拦截，较旧的
-          // 排队保存会覆盖较新的乐观点击，让开关看起来「弹回去」。
+          // A save's broadcast can arrive before its IPC promise resolves. Without the
+          // gate, an older queued save would overwrite a newer optimistic toggle,
+          // making the switch appear to "bounce back".
           const applicable = writeGateRef.current.receiveIncoming(nextPrefs);
           if (applicable) applyIncomingPrefs(applicable);
         });
@@ -162,8 +163,8 @@ export function HotkeySettingsProvider({ children }: { children: ReactNode }) {
         await queueSetSettings(resolved);
         persistedPrefsRef.current = resolved;
       } catch (error) {
-        // 兜底（#904）：保存失败必须回滚乐观状态并可见，
-        // 不能出现界面显示已切换、重启后回退的“假保存”。
+        // Rollback (#904): a failed save must visibly revert the optimistic state —
+        // no "fake save" where the UI shows the new value until the next restart.
         const fallback = persistedPrefsRef.current ?? current;
         latestPrefsRef.current = fallback;
         setPrefs(fallback);

@@ -1,7 +1,8 @@
-// 高级 → 实验性：多模态识别管线（issue #902）总开关。
-// 开启后在 服务 → AI 提供商 顶部出现「传统模式 / 多模态模式」切换：
-// 多模态模式用一个模型一步完成「提示词 + 音频 → 最终文本」，
-// 凭据走独立 omni 命名空间，与传统 ASR/LLM 两套配置完全隔离、并存但停用。
+// Advanced → Experimental: master switch for the multimodal recognition pipeline (issue #902).
+// When enabled, a "legacy mode / multimodal mode" switch appears at the top of Services → AI
+// Providers: multimodal mode completes "prompt + audio → final text" in one step with a single
+// model; credentials live in the separate omni namespace, fully isolated from the two legacy
+// ASR/LLM configurations — coexisting but inactive.
 
 import { useTranslation } from 'react-i18next';
 import { useHotkeySettings } from '../../state/HotkeySettingsContext';

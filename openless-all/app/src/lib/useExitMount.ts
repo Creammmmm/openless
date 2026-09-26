@@ -1,5 +1,7 @@
-// 关闭浮层时保持挂载至退出动画结束；再次打开会取消待卸载计时器。
-// 调用方用 mounted 控制渲染、closing 控制退场样式，exitMs 与 CSS 动画时长保持一致。
+// Keep overlays mounted until the exit animation finishes after close; reopening cancels the
+// pending unmount timer.
+// Callers use mounted to control rendering and closing for exit styles; exitMs must match the CSS
+// animation duration.
 
 import { useEffect, useState } from 'react';
 

@@ -1,14 +1,8 @@
-// 「要记住这个词吗」的卡片，弹在屏幕右下角。
-//
-// 为什么是卡片而不是攒在词汇表页：建议是在你刚改完词的那一刻最有意义的——那时你还记得
-// 自己为什么改。攒进设置页里的队列你根本想不起来去看，攒满了就开始丢最老的，等于白攒。
-//
-// 为什么在右下角而不是胶囊那个位置：胶囊居中在屏幕正下方，那正是你在写字的地方，卡片
-// 停留十秒就把正在编辑的那一行盖住了。右下角是唯一一块「停留几秒不打扰任何人」的地方。
-//
-// 为什么每条都是一勾一叉、没有「全部接受」：观察器分不出「一次纠错」和「打字打到一半」
-// ——真机上自动收进词汇表的 5 条里只有 1 条是对的。逐条看一眼是这里唯一可靠的判据，
-// 所以不提供任何批量入口。
+// "Remember this word?" card, popping up at the bottom-right of the screen. A card
+// instead of a queue in the vocab page because suggestions matter at the moment of
+// correction; bottom-right because the capsule's centered spot covers the line being
+// edited. Per-item accept/reject only, no bulk accept: automatic collection measured
+// ~4 of 5 wrong on real devices, so eyeballing each one is the only reliable filter.
 
 import { Icon } from './Icon';
 import { useEffect, useRef, useState } from 'react';
@@ -20,7 +14,7 @@ import {
 } from '../lib/ipc';
 import type { PendingCorrection } from '../lib/types';
 
-/// 卡片自己消失的时间，与后端 `VOCAB_SUGGESTION_TTL_MS` 对齐。
+/// Auto-dismiss delay, aligned with the backend's `VOCAB_SUGGESTION_TTL_MS`.
 const TTL_MS = 10_000;
 
 interface VocabSuggestionCardProps {
@@ -29,12 +23,14 @@ interface VocabSuggestionCardProps {
 
 export function VocabSuggestionCard({ suggestions }: VocabSuggestionCardProps) {
   const { t } = useTranslation();
-  // 点过的立刻从卡片上消失——不等后端回音，点了就该有反应。
+  // Resolved items vanish from the card immediately — no waiting for a backend echo;
+  // a click must react.
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   const timerRef = useRef<number | null>(null);
 
-  // 10 秒倒计时。列表一变就重新计时：同一次听写里连着改了几个词会陆续追加进来，
-  // 不重置的话后来的那条可能刚出现就没了。
+  // 10s countdown, restarting on every list change: several corrections from one
+  // dictation arrive in sequence, and without the reset a later item could vanish
+  // right as it appears.
   useEffect(() => {
     if (suggestions.length === 0) return;
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -49,7 +45,8 @@ export function VocabSuggestionCard({ suggestions }: VocabSuggestionCardProps) {
   const visible = suggestions.filter((s) => !resolved.has(s.id));
   if (visible.length === 0) return null;
 
-  // 勾和叉走同一条乐观更新：先本地隐藏，失败了再放回来让用户重点一次。
+  // Accept and reject share one optimistic update: hide locally first, restore on
+  // failure so the user can retry.
   const resolve = async (id: string, commit: (id: string) => Promise<void>) => {
     setResolved((prev) => new Set(prev).add(id));
     try {
@@ -72,7 +69,8 @@ export function VocabSuggestionCard({ suggestions }: VocabSuggestionCardProps) {
         flexDirection: 'column',
         justifyContent: 'flex-end',
         padding: 12,
-        // 卡片是唯一要接鼠标的东西——胶囊本体全程 pointerEvents:none。
+        // The card is the only thing taking mouse input — the capsule itself stays
+        // pointerEvents:none at all times.
         pointerEvents: 'auto',
         boxSizing: 'border-box',
         animation: 'capsule-in .28s cubic-bezier(.3,1.1,.4,1) both',
@@ -85,13 +83,14 @@ export function VocabSuggestionCard({ suggestions }: VocabSuggestionCardProps) {
           background: 'var(--ol-capsule-pill-bg)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          // 描边用 1px 实边 + 扩散阴影，与胶囊本体同一套写法。早期版本用
-          // `0.5px solid`：非整数边框落在半个物理像素里，圆角边缘看着就是糊的。
+          // 1px solid border + spread shadow, same approach as the capsule itself.
+          // Earlier `0.5px solid` fell on half a physical pixel, making the rounded
+          // edges look blurry.
           border: '1px solid var(--ol-capsule-pill-border)',
           boxShadow: 'var(--ol-capsule-pill-shadow), var(--ol-capsule-pill-inset)',
           color: 'var(--ol-capsule-btn-ink)',
           fontFamily: 'var(--ol-font-sans)',
-          // 子元素一律不许溢出圆角。
+          // Children must never overflow the rounded corners.
           overflow: 'hidden',
         }}
       >
@@ -152,8 +151,8 @@ export function VocabSuggestionCard({ suggestions }: VocabSuggestionCardProps) {
   );
 }
 
-/// 勾/叉。尺寸、配色、SVG path 都照搬胶囊上的那对确认/取消按钮 —— 同一个产品里的
-/// 同一个手势，不该长成两个样子。
+/// Accept/reject. Size, colors, and SVG paths copied from the capsule's confirm/cancel
+/// pair — the same gesture in one product shouldn't look like two.
 function CardButton({
   kind,
   label,
@@ -166,7 +165,8 @@ function CardButton({
   return (
     <button
       onClick={onClick}
-      // 卡片浮在别的 app 上面，按下去不能把焦点从用户正在写的地方抢走。
+      // The card floats over another app; pressing must not steal focus from where
+      // the user is typing.
       onMouseDown={(event) => {
         event.preventDefault();
         event.stopPropagation();

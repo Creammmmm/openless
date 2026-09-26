@@ -19,8 +19,9 @@ const isQa = windowKind === 'qa';
 const isSelectionVoiceIntent = windowKind === 'selection-voice-intent';
 const isLessComputer = windowKind === 'less-computer';
 const isLessComputerGlow = windowKind === 'less-computer-glow';
-// 开屏 PV 只属于主窗口（无 ?window= 参数的路由）：胶囊 / QA / Less Computer 等
-// 辅助窗口共用同一份前端产物，但绝不能抢占或重复消费开屏。
+// The splash video belongs to the main window only (routes without ?window=):
+// auxiliary windows (capsule / QA / Less Computer …) share the same frontend bundle
+// but must never claim or double-consume the splash.
 const isMainWindow = !windowKind;
 const osQuery = params.get('os') as OS | null;
 const os = osQuery ?? detectOS();

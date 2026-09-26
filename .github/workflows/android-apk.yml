@@ -27,7 +27,7 @@ on:
         type: boolean
         default: false
 
-# 同一 tag 重复推送只跑最新一次；workflow_dispatch 用 run_id 隔离避免互相取消。
+# Repeated pushes of the same tag run only the newest; workflow_dispatch isolates by run_id to avoid mutual cancellation.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -146,7 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Android 不使用本地 Qwen3/Whisper C 子模块。
+          # Android does not use the local Qwen3/Whisper C submodules.
           submodules: false
 
       - name: Disable macOS-only Qwen3 MLX dependency

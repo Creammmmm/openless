@@ -1,6 +1,6 @@
 import type { zhCN } from './zh-CN';
 
-// 繁體中文資源，與其餘七種語言共用同一組文案 key。
+// Traditional Chinese resources, sharing the same copy keys as the other seven locales.
 export const zhTW: typeof zhCN = {
   cloudSyncE2ee: {
     protocolTitle: '雲端同步協議與隱私提醒',

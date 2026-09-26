@@ -1079,7 +1079,8 @@ pub struct RemoteInputStatus {
     pub port: u16,
     pub urls: Vec<String>,
     pub urls_stale: bool,
-    /// 由宿主提供，取自正在运行的监听器所使用的公开根证书。
+    /// Provided by the host, taken from the public root certificate used by the
+    /// running listener.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ca_fingerprint_sha256: Option<String>,
     pub locale: String,
@@ -1148,7 +1149,8 @@ pub trait RemoteInputRuntimeAdapter: Send + Sync {
         &self,
         session_id: SessionId,
     ) -> BoxFuture<'static, Result<(), BackendError>>;
-    /// 只读取指定会话；由 Core 校验手机持有的恢复凭据。
+    /// Reads only the given session; Core validates the recovery credential the phone
+    /// holds.
     fn read_audio_history(
         &self,
         _session_id: SessionId,

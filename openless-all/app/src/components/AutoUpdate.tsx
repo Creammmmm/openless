@@ -1,9 +1,11 @@
-// 自动更新共用模块 — Settings 的"关于"section 和 footer 按钮共用同一套
-// 状态机 + 对话框 UI。两边各自调用 useAutoUpdate()，dialog 渲染条件相同。
+// Auto-update shared module — the Settings "about" section and the footer button share
+// one state machine + dialog UI. Each calls useAutoUpdate() with the same dialog
+// render conditions.
 //
-// 渠道感知：check 走 appCheckUpdateWithChannel()（Rust 按渠道拼 manifest URL）。
-// 桌面：download/install 复用 plugin-updater 的 Update 类。
-// Android：download/install 走 appDownloadAndInstallAndroidUpdate（minisign + 系统安装器）。
+// Channel-aware: check goes through appCheckUpdateWithChannel() (Rust builds the
+// manifest URL per channel). Desktop: download/install reuses plugin-updater's Update
+// class. Android: download/install goes through appDownloadAndInstallAndroidUpdate
+// (minisign + system installer).
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -28,7 +30,8 @@ import { Btn } from '../pages/_atoms';
 
 const UPDATE_CHECK_TIMEOUT_MS = 15_000;
 
-// 自动更新失败时的手动下载兜底：直达 GitHub Releases（与「关于」页 RELEASE_NOTES_URL 一致）。
+// Manual-download fallback when auto-update fails: straight to GitHub Releases
+// (same as the About page's RELEASE_NOTES_URL).
 const RELEASE_DOWNLOAD_URL = 'https://github.com/Open-Less/openless/releases';
 
 export type UpdateStatus =
@@ -40,9 +43,10 @@ export type UpdateStatus =
   | 'installing'
   | 'downloaded'
   | 'error'
-  // installError：下载/安装这一步失败（区别于 'error' 的「检查失败」）。
-  // 检查失败沿用 'error'，在 CheckUpdateButton 里只做按钮内轻提示、不弹框，
-  // 后台自动检查失败也不弹框；只有 installError 才让弹框留在原地显示错误 + 手动下载兜底。
+  // installError: the download/install step failed (vs 'error' = check failed).
+  // Check failures stay 'error' — CheckUpdateButton shows only an inline hint, no
+  // dialog; background auto-check failures also stay silent. Only installError keeps
+  // the dialog open with the error + manual-download fallback.
   | 'installError';
 
 export type CheckUpdateOptions = {
@@ -168,7 +172,7 @@ export function useAutoUpdate(): UseAutoUpdate {
         setVersion(metadata.version);
         if (options?.autoInstallAndroid) {
           try {
-            // 复用 storeAndroidMetadata 的 rawJson 解析（提取 url/signature/version）
+            // Reuse storeAndroidMetadata's rawJson parsing (extract url/signature/version)
             const raw = metadata.rawJson ?? {};
             const url = typeof raw.url === 'string' ? raw.url : '';
             const signature = typeof raw.signature === 'string' ? raw.signature : '';
@@ -331,10 +335,12 @@ export function UpdateDialog({
   const androidInstalled = isAndroid() && status === 'downloaded';
   const switchingToStable =
     status === 'available' && isStableChannelSwitch(currentVersion, version);
-  // Portal 到 document.body：WindowChrome / 设置弹窗带常驻 transform + will-change，
-  // 会创建 containing block——`position: fixed` 的遮罩会相对设置面板定位，只压暗
-  // 白色内容区（侧边栏深色看不出，形成「内容变灰、断层感」，见 Modal.tsx 同款注释）。
-  // portal 出去后遮罩铺满整窗，灰度均匀。0.05 极淡遮罩因此可以恢复正常遮罩透明度。
+  // Portal to document.body: WindowChrome / the settings dialog carry persistent
+  // transform + will-change, creating a containing block — the `position: fixed`
+  // overlay would anchor to the settings panel, dimming only the white content area
+  // (the dark sidebar hides it, reading as "grayed content with a seam"; see the same
+  // note in Modal.tsx). Portaled out, the overlay covers the whole window evenly, so
+  // the very faint 0.05 backdrop can return to normal overlay opacity.
   return createPortal(
     <div
       style={{

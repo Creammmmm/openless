@@ -40,8 +40,8 @@ interface SettingsModalProps {
   os: OS;
   onClose: () => void;
   initialSettingsSection?: SettingsSectionId;
-  /** true 时反向播放入场动画；由 FloatingShell
-   *  的 useExitMount 门控，动画播完才真正卸载。 */
+  /** true plays the enter animation in reverse; FloatingShell's
+   *  useExitMount gates it, unmounting only after the animation finishes. */
   closing?: boolean;
 }
 
@@ -57,7 +57,8 @@ export function SettingsModal({
   closing = false,
 }: SettingsModalProps) {
   const { t, i18n } = useTranslation();
-  // 渠道表单的写入在关闭/切节前收敛（异步保存不丢草稿）；版本计数不含凭据内容。
+  // The provider form's writes settle before close/section switch (async saves don't
+  // lose drafts); the revision counter excludes credential content.
   const providerForm = useProviderForm();
   const mobile = useMobileLayout();
   const conservative = useConservativeLayout();
@@ -107,7 +108,8 @@ export function SettingsModal({
       ? t(`modal.advancedPages.${activeAdvancedPage.id}`)
       : t(`modal.descriptions.${section}`);
 
-  // 指示块按所选导航行的布局位置移动；搜索或移动布局时隐藏。
+  // The indicator thumb moves to the selected nav row's layout position; hidden
+  // while searching or in mobile layout.
   const railNavRef = useRef<HTMLElement>(null);
   const railBtnRefs = useRef(new Map<SettingsSectionId, HTMLButtonElement>());
   const [railThumb, setRailThumb] = useState<{ top: number; height: number } | null>(null);
@@ -236,8 +238,9 @@ export function SettingsModal({
     }
   };
 
-  // 搜索框：桌面端放在侧栏顶部（仿 macOS 系统设置的「搜索在导航栏上方」布局，
-  // ）；移动端仍留在标题栏下方整行。
+  // Search box: desktop puts it at the top of the sidebar (mirroring macOS System
+  // Settings' "search above the nav" layout); mobile keeps it full-width under the
+  // title bar.
   const searchBox = (
     <div
       style={{
@@ -294,8 +297,9 @@ export function SettingsModal({
       <div
         className={mobile ? undefined : 'ol-dialog-overlay'}
         onClick={mobile ? undefined : closeSettings}
-        // 打开动画：遮罩淡入 + 面板弹入（global.css ol-modal-* keyframes，纯
-        // opacity/transform，合成器友好）。此前设置面板是瞬间出现的。
+        // Open animation: backdrop fades in + panel pops in (global.css ol-modal-*
+        // keyframes, pure opacity/transform, compositor-friendly). The settings panel
+        // used to appear instantly.
         style={{
           position: mobile ? 'fixed' : 'absolute',
           inset: 0,
@@ -344,9 +348,10 @@ export function SettingsModal({
                 : 'ol-modal-card-in 0.28s var(--ol-motion-spring) both',
           }}
         >
-          {/* 桌面端不再有横跨两栏的标题栏；
-            左侧栏与右侧内容各自通到顶，标题/自动保存/关闭并入右栏顶部。
-            移动端保留整宽 header（标题 + 关闭 + 整行搜索）。 */}
+          {/* Desktop no longer has a title bar spanning both columns;
+            the sidebar and content each run to the top, with title/auto-save/close
+            folded into the right column's top. Mobile keeps the full-width header
+            (title + close + full-row search). */}
           {mobile && (
             <header
               style={{
@@ -410,7 +415,7 @@ export function SettingsModal({
                   overflowX: mobile ? 'auto' : undefined,
                 }}
               >
-                {/* 滑动蓝框：top/height 跟随当前分类按钮，spring 曲线过渡。 */}
+                {/* Sliding blue thumb: top/height follow the active category button, spring-eased. */}
                 {!mobile && railThumb && (
                   <div
                     aria-hidden="true"
@@ -510,8 +515,9 @@ export function SettingsModal({
                     slideFrom="top"
                     offsetStyle={{ position: 'absolute', top: 12, right: 16 }}
                   />
-                  {/* 桌面端：分类标题 + 自动保存提示 + 关闭按钮组成右栏自己的顶栏
-                （仿系统设置：工具条只属于内容区，不再横跨左栏）。 */}
+                  {/* Desktop: the category title + auto-save hint + close button form
+                the right column's own top bar (like System Settings: the toolbar
+                belongs to the content area, no longer spanning the sidebar). */}
                   {(!mobile || activeAdvancedPage) && (
                     <div
                       style={{
@@ -672,8 +678,8 @@ export function SettingsModal({
                         )}
                       </div>
                     )}
-                    {/* key={section} 重挂载 → 每次切换分类播放轻微淡入（ol-tab-fade），
-                  与 tab 切换动画语言一致。 */}
+                    {/* key={section} remounts → a subtle fade-in (ol-tab-fade) on every
+                  category switch, matching the tab-switch animation language. */}
                     <div
                       key={section}
                       style={{

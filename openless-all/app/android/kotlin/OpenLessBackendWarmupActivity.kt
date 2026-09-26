@@ -8,7 +8,8 @@ import android.content.Intent
 
 /** Starts the Tauri/Rust runtime without presenting the settings UI. */
 class OpenLessBackendWarmupActivity : MainActivity() {
-    // Activity 实例化阶段尚未 attach Context，不能访问 Activity.mainLooper。
+    // During Activity instantiation the Context is not attached yet; Activity.mainLooper is
+    // inaccessible.
     private val warmupHandler = Handler(Looper.getMainLooper())
     private val sendToBackground = Runnable {
         if (!settingsRequested && !isFinishing && !isDestroyed) {
@@ -31,8 +32,9 @@ class OpenLessBackendWarmupActivity : MainActivity() {
         activeInstance = java.lang.ref.WeakReference(this)
         settingsRequested = intent.getBooleanExtra(EXTRA_SHOW_SETTINGS, false)
 
-        // 不再修改窗口透明度或触摸属性。主 Activity 必须以正常窗口完成
-        // Tauri/WebView 初始化，完成后仅退到后台，避免留下黑色/空白窗口状态。
+        // Do not touch window transparency or touch properties anymore. The main Activity must
+        // complete Tauri/WebView initialization as a normal window and then only go to the
+        // background, avoiding a black/blank window state.
         // Tauri/WebView keeps initializing natively after super.onCreate() returns.
         // Backgrounding this window while that is still in flight has produced a
         // native "destroyed mutex" abort in HWUI's worker pool; suppressing the

@@ -4311,12 +4311,17 @@ impl OpenLessBackend {
         self.preferences.get()
     }
 
-    /// 消费「本大版本首启」开屏 PV 标记：配置里的 `splash_seen_version` 与传入的
-    /// 当前主版本一致时返回 false（不再播放）；不一致时写回主版本并返回 true，
-    /// 前端据此播放随包发行的开屏动画（同世代 2.x 升级与重启都不重播）。
-    /// 磁盘写入失败时仍返回 true——宁可多播一次，也不静默吞掉首启体验；标记留待
-    /// 下次启动重试。成功写回后走 publish_preferences_changed 递增 revision，
-    /// 让并发中的设置页乐观提交重新对账，不会拿着旧档把标记冲掉。
+    /// Consumes the "first launch of this major version" splash PV marker:
+    /// returns false when the config's `splash_seen_version` matches the
+    /// given current major (no replay); on mismatch it writes back the major
+    /// and returns true, and the frontend plays the bundled splash animation
+    /// (2.x upgrades and restarts within the same generation never replay).
+    /// Returns true even when the disk write fails — better to replay once
+    /// than silently swallow the first-launch experience; the marker retries
+    /// on next launch. A successful write goes through
+    /// publish_preferences_changed to bump the revision so in-flight settings
+    /// pages with optimistic submits re-reconcile instead of wiping the
+    /// marker with a stale document.
     pub fn take_splash_playback(&self, current_major: &str) -> bool {
         match self.preferences.update(|preferences| {
             if preferences.splash_seen_version == current_major {
@@ -4423,9 +4428,11 @@ impl OpenLessBackend {
         let mut previous = self.preferences.get();
         crate::sync_dictation_hotkey_legacy_fields(&mut previous);
         crate::sync_dictation_hotkey_legacy_fields(&mut preferences);
-        // 开屏标记只能由 take_splash_playback 推进：整档提交的客户端（旧前端或
-        // 尚未回读标记的请求）不带此字段时，serde 默认会把空串写回，导致下次
-        // 启动重播开屏 PV。这里永远沿用盘上的当前值。
+        // The splash marker may only advance via take_splash_playback: when a
+        // whole-document submit (old frontend, or a request that hasn't read
+        // the marker back) omits the field, serde's default would write the
+        // empty string and replay the splash PV on next launch. Always keep
+        // the on-disk current value here.
         preferences.splash_seen_version = previous.splash_seen_version.clone();
         if options.preserve_current_style {
             preferences.preserve_style_preferences_from(&previous);
@@ -12535,16 +12542,16 @@ mod tests {
         };
 
         let backend = make();
-        // 首启：标记缺失 → 播放一次并写回主版本。
+        // First launch: marker missing -> play once and write back the major.
         assert!(backend.take_splash_playback("2"));
         assert_eq!(backend.get_preferences().splash_seen_version, "2");
-        // 同一世代内再次启动不再播放。
+        // A restart within the same generation doesn't replay.
         assert!(!backend.take_splash_playback("2"));
 
-        // 模拟进程重启：标记已从 preferences.json 读回。
+        // Simulated process restart: the marker was read back from preferences.json.
         let reopened = make();
         assert!(!reopened.take_splash_playback("2"));
-        // 新一代大版本：播一次新 PV 后同样收口。
+        // A new major generation: plays the new PV once, then settles the same way.
         assert!(reopened.take_splash_playback("3"));
         assert!(!reopened.take_splash_playback("3"));
         assert_eq!(reopened.get_preferences().splash_seen_version, "3");

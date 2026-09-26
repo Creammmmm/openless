@@ -92,12 +92,15 @@ impl openless_core::RecordingControlSink for SelectionVoiceRecordingControl {
             )
         })?;
         if action == openless_core::RecordingControlAction::Cancel {
-            // 取消必须先同步撤销Starting owner。它不能排队等待capture
-            // 安装：Core已使token失效，迟到的原生句柄只会关闭，不会attach。
+            // Cancellation must synchronously revoke the Starting owner first.
+            // It must not queue behind capture installation: Core has already
+            // invalidated the token, so a late native handle is only closed,
+            // never attached.
             Self::apply(&inner, session_id, action);
             return Ok(());
         }
-        // 与 flush 串行化：不能在 flush 读空队列以后才把启动事件排入。
+        // Serialize against flush: a start event must not be enqueued after
+        // flush has already read an empty queue.
         let mut pending = self.pending.lock();
         let ready = inner
             .selection_voice_capture
@@ -136,7 +139,8 @@ fn emit_selection_voice_begin_error(inner: &Arc<Inner>, error: &str) {
         Some(selection_voice_user_message(error)),
         None,
     );
-    // 无选区等 begin 失败时胶囊会停在 Error；与听写 Done/Error 同口径，2s 后自动收回。
+    // On begin failures like "no selection" the capsule stops at Error; same
+    // convention as dictation Done/Error, auto-hidden after 2s.
     schedule_capsule_idle(inner, CAPSULE_AUTO_HIDE_DELAY_MS);
     log::info!(
         "[selection-voice] begin error capsule shown error={error} auto_hide_ms={CAPSULE_AUTO_HIDE_DELAY_MS}"
@@ -353,8 +357,10 @@ async fn begin_selection_voice_session(inner: &Arc<Inner>) -> Result<(), String>
         Ok(capture) => {
             let capture = Arc::new(capture);
             let installed = {
-                // 启动中的取消会先撤销 target owner。检查 owner 与安装
-                // capture 共用这段锁，迟到的设备启动不能覆盖下一轮句柄。
+                // A cancel during startup revokes the target owner first.
+                // Owner check and capture installation share this lock section,
+                // so a late device start cannot overwrite the next round's
+                // handle.
                 let host = inner.selection_voice_host.lock();
                 if host.target_session_id == Some(session_id) {
                     *inner.selection_voice_capture.lock() = Some(Arc::clone(&capture));
@@ -365,7 +371,8 @@ async fn begin_selection_voice_session(inner: &Arc<Inner>) -> Result<(), String>
             };
             if !installed {
                 let _ = capture.cancel().await;
-                // 用户已取消或开始新一轮，不再把迟到的旧启动显示为错误。
+                // The user already cancelled or started a new round; do not
+                // surface the stale late start as an error.
                 return Ok(());
             }
             recording_control.flush(session_id);
@@ -414,8 +421,9 @@ async fn end_selection_voice_session(
     let session_id = snapshot
         .session_id
         .ok_or_else(|| "selectionVoiceSessionUnavailable".to_string())?;
-    // 延迟静音事件携带旧 generation；Core 的 mark_processing 会在同一
-    // 状态锁内再次验证，保证检查后发生的取消/换轮也不会被越过。
+    // A delayed mute event carries the old generation; Core's mark_processing
+    // re-validates under the same state lock, so a cancel / new round that
+    // happens after the check cannot slip through either.
     if expected_session.is_some_and(|expected| expected != session_id) {
         return Ok(());
     }
@@ -426,7 +434,8 @@ async fn end_selection_voice_session(
         .mark_processing(session_id)
         .await
         .map_err(core_error)?;
-    // 松开只结束录音；识别指令、润色和替换完成之前仍展示思考动画。
+    // Releasing only ends the recording; the thinking animation stays until
+    // instruction recognition, polish, and replacement complete.
     let processing_epoch = emit_capsule(inner, CapsuleState::Transcribing, 0.0, 0, None, None);
     let workflow: Result<EndWorkflowOutcome, String> = async {
         let capture = inner
@@ -436,8 +445,9 @@ async fn end_selection_voice_session(
             .filter(|capture| capture.session_id() == session_id)
             .cloned()
             .ok_or_else(|| "selectionVoiceAsrUnavailable".to_string())?;
-        // ASR finish 期间仍保留注册表中的 Arc，让取消能中止相同 provider。
-        // finish 返回后仅移除自己的句柄，旧任务不能清掉下一轮 capture。
+        // Keep the Arc in the registry during ASR finish so cancellation can
+        // still abort the same provider. After finish returns, remove only this
+        // handle; an old task must not clear the next round's capture.
         let result = capture.finish().await;
         {
             let mut current = inner.selection_voice_capture.lock();
@@ -495,8 +505,9 @@ async fn end_selection_voice_session(
             if snapshot.session_id != Some(session_id)
                 || snapshot.phase == SelectionVoicePhase::Cancelled
             {
-                // 取消后的旧 provider 结果只清理自己的 owner；不再触发
-                // 错误胶囊，否则可能把下一轮正在录音的 UI 覆盖掉。
+                // A stale provider result after cancellation only cleans up its
+                // own owner; no error capsule is emitted, otherwise it could
+                // overwrite the UI of the next round's recording in flight.
                 clear_host_session(inner, session_id);
                 return Ok(());
             }
@@ -586,8 +597,9 @@ impl Coordinator {
     }
 
     pub(crate) fn finish_cancelled_selection_voice_host(&self, session_id: CoreSessionId) {
-        // 先撤销 owner，阻止仍在 await 的启动任务安装资源；之后只取走
-        // 对应 generation 的录音，旧取消回调不能中止新一轮。
+        // Revoke the owner first so a start task still awaiting cannot install
+        // resources; then take only the recording of the matching generation,
+        // so an old cancel callback cannot abort a new round.
         let was_current = clear_host_session(&self.inner, session_id);
         let capture = {
             let mut current = self.inner.selection_voice_capture.lock();

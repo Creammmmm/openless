@@ -1,5 +1,5 @@
-// 简体中文资源 — 与产品当前文案保持一致。
-// 八个语言文件共享同一结构；新增或删除 key 时同步更新全部语言。
+// Simplified Chinese resources — kept in sync with the product's current copy.
+// The eight locale files share one structure; add/remove keys in all of them together.
 
 export const zhCN = {
   cloudSyncE2ee: {
