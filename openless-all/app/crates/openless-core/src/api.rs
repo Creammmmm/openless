@@ -1,3 +1,4 @@
+mod cloud_note;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -1740,6 +1741,7 @@ struct MutableState {
     /// are still being captured. The accepted request is applied before finish
     /// by every stop entry; no Host latch survives into the next session.
     dictation_translation_requested: Option<bool>,
+    dictation_destination_changed: bool,
     credentials: CredentialsStatus,
     transcripts: HashMap<SessionId, crate::types::TranscriptAccumulator>,
     silence_monitor: Option<SilenceMonitor>,
@@ -2788,6 +2790,7 @@ impl OpenLessBackend {
                 dictation_context: None,
                 dictation_start_output_target: None,
                 dictation_translation_requested: None,
+                dictation_destination_changed: false,
                 credentials: CredentialsStatus::default(),
                 transcripts: HashMap::new(),
                 silence_monitor: None,
@@ -3739,6 +3742,9 @@ impl OpenLessBackend {
         // Native status warms only through the already-bound sync gate. A
         // pending journal therefore uses the Host's read-only loader before
         // startup recovery/auto-sync tries to capture credentials.
+        if !self.snapshot().running {
+            self.recover_cloud_notes()?;
+        }
         let before = self.get_preferences();
         let warmed = self.deps.credential_store.status(before).await;
         if let Some(sync) = &self.encrypted_sync {
@@ -4517,7 +4523,7 @@ impl OpenLessBackend {
         Ok(result)
     }
 
-    async fn refresh_and_publish_credentials(&self) -> Result<CredentialsStatus, BackendError> {
+    pub async fn refresh_and_publish_credentials(&self) -> Result<CredentialsStatus, BackendError> {
         let status = self
             .deps
             .credential_store
@@ -5520,6 +5526,7 @@ impl OpenLessBackend {
             };
             state.dictation_start_output_target = Some(output_target);
             state.dictation_translation_requested = None;
+            state.dictation_destination_changed = false;
             self.events.publish(
                 Some(session_id),
                 BackendEventKind::DictationStateChanged(state.dictation.clone()),
@@ -5552,6 +5559,12 @@ impl OpenLessBackend {
             resources: starting_resources,
             inserter,
         } = reservation;
+        if options.output_target == DictationOutputTarget::CloudNote {
+            if let Err(error) = self.set_dictation_cloud_note(session_id, true) {
+                self.reset_dictation_session(session_id);
+                return Err(error);
+            }
+        }
         let context = match self
             .capture_dictation_context(&options, DictationContextPurpose::Dictation)
             .await
@@ -5593,6 +5606,10 @@ impl OpenLessBackend {
                     ),
                 }
             });
+            let context = match state.dictation_start_output_target {
+                Some(target) => Arc::new(context.with_output_target(target)),
+                None => context,
+            };
             state.dictation.translation_active = context.polish.translation_active;
             state.dictation_context = Some(Arc::clone(&context));
             state.dictation_start_output_target = None;
@@ -5758,6 +5775,7 @@ impl OpenLessBackend {
         if !started {
             let _ = self.cancel_session_adapters(session_id).await;
             self.reconcile_aborted_recording_draft(session_id, &context);
+            self.cleanup_cloud_note(session_id, true)?;
             return Err(BackendError::new(
                 BackendErrorCode::Cancelled,
                 "dictation session was cancelled while the engine was starting",
@@ -5804,7 +5822,7 @@ impl OpenLessBackend {
         .await
     }
 
-    async fn stop_dictation_session_with_options(
+    pub async fn stop_dictation_session_with_options(
         &self,
         mut expected_session_id: Option<SessionId>,
         options: DictationStopOptions,
@@ -5844,11 +5862,15 @@ impl OpenLessBackend {
                         })?;
                         let target = output_target.unwrap_or_else(|| match options.quick_note {
                             Some(true) => DictationOutputTarget::QuickNote,
-                            Some(false) => DictationOutputTarget::ForegroundApp,
+                            Some(false)
+                                if captured.output_target != DictationOutputTarget::CloudNote =>
+                            {
+                                DictationOutputTarget::ForegroundApp
+                            }
                             None if captured.output_target == DictationOutputTarget::Undecided => {
                                 DictationOutputTarget::ForegroundApp
                             }
-                            None => captured.output_target,
+                            None | Some(false) => captured.output_target,
                         });
                         let targeted = captured.with_output_target(target);
                         let context = match options.translation_requested {
@@ -5857,11 +5879,19 @@ impl OpenLessBackend {
                             }
                             None => Arc::new(targeted),
                         };
+                        let context = match options.raw_requested {
+                            Some(true) => Arc::new(context.with_raw_requested(true)),
+                            _ => context,
+                        };
                         let context_changed =
-                            state.dictation_translation_requested.take().is_some()
+                            std::mem::take(&mut state.dictation_destination_changed)
+                                || state.dictation_translation_requested.take().is_some()
                                 || state.dictation_context.as_ref().is_some_and(|previous| {
                                     previous.polish.translation_active
                                         != context.polish.translation_active
+                                        || previous.polish.mode != context.polish.mode
+                                        || previous.polish.style_system_prompt
+                                            != context.polish.style_system_prompt
                                         || previous.output_target != context.output_target
                                 });
                         state.dictation_context = Some(Arc::clone(&context));
@@ -5992,6 +6022,17 @@ impl OpenLessBackend {
                 return Err(error);
             }
         };
+
+        if context.output_target == DictationOutputTarget::CloudNote && engine_result.polish_failed
+        {
+            let error =
+                BackendError::new(BackendErrorCode::Provider, "cloud note polishing failed");
+            self.mark_dictation_failed(session_id, &error);
+            let _ = self.hide_dictation_feedback(session_id);
+            self.reset_dictation_session(session_id);
+            self.cleanup_cloud_note(session_id, true)?;
+            return Err(error);
+        }
 
         if engine_result.raw_text.trim().is_empty() {
             let error = BackendError::new(
@@ -6173,6 +6214,7 @@ impl OpenLessBackend {
         // transcript, silence detector or physical-hotkey generation.
         self.reset_dictation_session(session_id);
         self.persist_completed_dictation(&context, &result, insert_outcome, &engine_result);
+        self.cleanup_cloud_note(session_id, true)?;
         host_result?;
         Ok(result)
     }
@@ -6186,6 +6228,11 @@ impl OpenLessBackend {
     }
 
     fn persist_recording_started(&self, context: &DictationContext, session_id: SessionId) {
+        if context.output_target == DictationOutputTarget::CloudNote
+            || self.is_cloud_note(session_id)
+        {
+            return;
+        }
         let preferences = self.get_preferences();
         let front_app =
             crate::shared_types::split_front_app_opt(context.polish.front_app.as_deref());
@@ -6298,7 +6345,10 @@ impl OpenLessBackend {
         insert_outcome: Option<InsertOutcome>,
         engine_result: &crate::ports::EngineResult,
     ) {
-        if context.output_target == DictationOutputTarget::Qa {
+        if context.output_target == DictationOutputTarget::Qa
+            || context.output_target == DictationOutputTarget::CloudNote
+            || self.is_cloud_note(result.session_id)
+        {
             self.remove_recording_draft(result.session_id);
             return;
         }
@@ -6392,6 +6442,11 @@ impl OpenLessBackend {
         asr_call_label: Option<crate::auxiliary::AsrCallLabel>,
         llm_call_label: Option<crate::polish::LlmCallLabel>,
     ) {
+        if context.output_target == DictationOutputTarget::CloudNote
+            || self.is_cloud_note(session_id)
+        {
+            return;
+        }
         let preferences = self.get_preferences();
         let front_app =
             crate::shared_types::split_front_app_opt(context.polish.front_app.as_deref());
@@ -6485,6 +6540,9 @@ impl OpenLessBackend {
         hotkey.terminal(std::time::Instant::now());
         self.phase_changed.notify_waiters();
         drop(state);
+        if let Err(error) = self.cleanup_cloud_note(session_id, false) {
+            log::warn!("{error}");
+        }
         self.voice_sessions.release(session_id);
     }
 
@@ -6681,7 +6739,8 @@ impl OpenLessBackend {
         let first_error = cancel_result
             .err()
             .or_else(|| host_result.err())
-            .or_else(|| history_result.err());
+            .or_else(|| history_result.err())
+            .or_else(|| self.cleanup_cloud_note(active, false).err());
         match first_error {
             Some(error) => Err(error),
             None => Ok(()),
@@ -11173,6 +11232,135 @@ mod tests {
 
         backend.shutdown().await.unwrap();
         let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[tokio::test]
+    async fn cloud_note_destination_can_be_revoked_and_cleanup_failure_is_visible() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "openless-cloud-destination-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let engine = Arc::new(crate::testing::FixtureDictationEngine::successful(
+            "raw", "polished",
+        ));
+        let backend = backend_with_dictation_engine(data_dir.clone(), engine.clone());
+        backend.start().await.unwrap();
+        let id = backend.start_dictation().await.unwrap();
+        backend.set_dictation_cloud_note(id, true).unwrap();
+        backend.set_dictation_cloud_note(id, false).unwrap();
+        backend.stop_dictation_session(id).await.unwrap();
+        assert_eq!(backend.list_history().unwrap().len(), 1);
+        assert_eq!(
+            engine.contexts().last().unwrap().output_target,
+            DictationOutputTarget::ForegroundApp
+        );
+        let cloud = backend
+            .start_dictation_with_options(DictationStartOptions {
+                output_target: DictationOutputTarget::CloudNote,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let blocked_path = data_dir.join("recordings").join(format!("{cloud}.wav"));
+        std::fs::create_dir_all(&blocked_path).unwrap();
+        assert_eq!(
+            backend
+                .stop_dictation_session(cloud)
+                .await
+                .unwrap_err()
+                .code,
+            BackendErrorCode::Persistence
+        );
+        assert_eq!(backend.list_history().unwrap().len(), 1);
+        assert!(data_dir
+            .join("cloud-note-cleanup")
+            .join(cloud.to_string())
+            .exists());
+        std::fs::remove_dir(&blocked_path).unwrap();
+        backend.shutdown().await.unwrap();
+        backend.start().await.unwrap();
+        assert!(!data_dir
+            .join("cloud-note-cleanup")
+            .join(cloud.to_string())
+            .exists());
+        backend.shutdown().await.unwrap();
+        std::fs::remove_dir_all(data_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cloud_notes_never_retain_history_or_audio_on_success_failure_or_cancel() {
+        for outcome in ["success", "failure", "polish_failure", "empty", "cancel"] {
+            let data_dir =
+                std::env::temp_dir().join(format!("openless-cloud-note-{}", uuid::Uuid::new_v4()));
+            let transcription = if outcome == "failure" {
+                crate::testing::FixtureTranscriptionEngine::failing(BackendError::new(
+                    BackendErrorCode::Provider,
+                    "fixture",
+                ))
+            } else {
+                crate::testing::FixtureTranscriptionEngine::successful(
+                    if outcome == "empty" {
+                        ""
+                    } else {
+                        "private text"
+                    },
+                    1000,
+                )
+            };
+            let engine = crate::PipelineDictationEngine::new(
+                Arc::new(crate::ExternalAudioRecorder::with_recordings_directory(
+                    data_dir.join("recordings"),
+                )),
+                Arc::new(transcription),
+                Arc::new(if outcome == "polish_failure" {
+                    crate::testing::FixtureTextPolisher::failing(BackendError::new(
+                        BackendErrorCode::Provider,
+                        "fixture polish",
+                    ))
+                } else {
+                    crate::testing::FixtureTextPolisher::successful("polished private text")
+                }),
+            );
+            let backend = backend_with_dictation_engine(data_dir.clone(), Arc::new(engine));
+            backend.start().await.unwrap();
+            let mut prefs = backend.get_preferences();
+            prefs.record_audio_for_debug = true;
+            backend.set_preferences(prefs).unwrap();
+            let id = backend.start_external_dictation().await.unwrap();
+            backend.feed_external_pcm(id, &vec![1; 32000]).unwrap();
+            backend.set_dictation_cloud_note(id, true).unwrap();
+            if outcome == "cancel" {
+                backend.cancel_dictation(Some(id)).await.unwrap();
+            } else {
+                let result = backend.stop_dictation_session(id).await;
+                assert_eq!(result.is_ok(), outcome == "success");
+                if let Ok(result) = result {
+                    assert_eq!(result.polished_text, "polished private text");
+                }
+            }
+            assert!(backend.list_history().unwrap().is_empty(), "{outcome}");
+            assert!(
+                !data_dir
+                    .join("recordings")
+                    .join(format!("{id}.wav"))
+                    .exists(),
+                "{outcome}"
+            );
+            assert!(backend.set_dictation_cloud_note(id, true).is_err());
+            backend.shutdown().await.unwrap();
+            // Crash recovery may only remove recordings with an explicit cleanup marker.
+            std::fs::create_dir_all(data_dir.join("cloud-note-cleanup")).unwrap();
+            std::fs::write(data_dir.join("cloud-note-cleanup").join(id.to_string()), "").unwrap();
+            let private_wav = data_dir.join("recordings").join(format!("{id}.wav"));
+            std::fs::write(&private_wav, "private").unwrap();
+            let retained = data_dir.join("recordings/ordinary.wav");
+            std::fs::write(&retained, "ordinary").unwrap();
+            backend.start().await.unwrap();
+            assert!(!private_wav.exists());
+            assert!(retained.exists());
+            backend.shutdown().await.unwrap();
+            std::fs::remove_dir_all(data_dir).unwrap();
+        }
     }
 
     #[tokio::test]

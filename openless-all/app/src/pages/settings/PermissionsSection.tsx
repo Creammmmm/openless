@@ -252,7 +252,7 @@ export function PermissionsSection() {
         </SettingRow>
       )}
       {platformCaps?.supportsOverlay && platformCaps.platform === 'android' && (
-        <AndroidPermissionsPanel />
+        <AndroidPermissionsPanel mode="permissionsOnly" />
       )}
       {windowsIme?.state !== 'notWindows' && platformCaps?.platform !== 'android' && (
         <SettingRow label={t('settings.permissions.windowsImeLabel')}>

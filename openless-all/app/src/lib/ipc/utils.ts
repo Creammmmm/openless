@@ -29,22 +29,26 @@ export async function openExternal(url: string): Promise<void> {
  * Browser dev mode goes through a mock and does not write to disk. Returns the final save
  * absolute path, or null if the user cancelled.
  *
- * Android: filters are omitted — CREATE_DOCUMENT + EXTRA_MIME_TYPES is unstable on some ROMs;
- * the file name already carries .log, which identifies the type well enough.
+ * Android writes the log to public Downloads through MediaStore.
  */
 export async function exportErrorLog(suggestedFileName: string): Promise<string | null> {
   if (!isTauri) {
     return `~/Downloads/${suggestedFileName}`;
   }
-  const { save } = await import('@tauri-apps/plugin-dialog');
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+  if (isAndroid) {
+    return invokeOrMock<string>(
+      'export_error_log_to_downloads',
+      { fileName: suggestedFileName },
+      () => `~/Downloads/${suggestedFileName}`,
+    );
+  }
+  const { save } = await import('@tauri-apps/plugin-dialog');
   const target = await save(
-    isAndroid
-      ? { defaultPath: suggestedFileName }
-      : {
-          defaultPath: suggestedFileName,
-          filters: [{ name: 'Log', extensions: ['log', 'txt'] }],
-        },
+    {
+      defaultPath: suggestedFileName,
+      filters: [{ name: 'Log', extensions: ['log', 'txt'] }],
+    },
   );
   if (!target) return null;
   await invokeOrMock<void>('export_error_log', { targetPath: target }, () => undefined);

@@ -215,7 +215,7 @@ export function DebugToolsSection() {
               title={exportMessage}
             >
               {t('modal.about.exportSuccess')}
-              {mobile && exportMessage ? `：${exportMessage}` : ''}
+              {exportMessage ? `：${exportMessage}` : ''}
             </span>
           )}
           {exportStatus === 'err' && (

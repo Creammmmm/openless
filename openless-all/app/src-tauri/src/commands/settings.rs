@@ -236,10 +236,15 @@ pub async fn set_settings(
     coord: CoordinatorState<'_>,
     app: AppHandle,
     mut prefs: UserPreferences,
+    edits: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 ) -> Result<UserPreferences, String> {
     // Capture old values for the remote-input service diff (start/stop/restart when the
     // port/switch changes after persist).
     let remote_prev = coord.backend().get_preferences();
+    if let Some(edits) = &edits {
+        prefs = openless_core::preference_patch::patch_preferences(&prefs, edits)
+            .map_err(|e| e.to_string())?;
+    }
     let packs = coord
         .backend()
         .list_style_packs(&prefs.active_style_pack_id)
@@ -247,11 +252,12 @@ pub async fn set_settings(
     sync_style_pack_preferences(&mut prefs, &packs);
     prefs.android_overlay_trigger = prefs.android_overlay_trigger.normalized();
     invalidate_llm_tests_if_thinking_changed(&coord, &remote_prev, &prefs).await?;
-    // Broadcast to all webviews. issue #205: QaPanel runs in its own webview without
-    // HotkeySettingsContext and must learn about record-hotkey changes via events;
-    // otherwise, while the panel is visible, changing the hotkey leaves the "{recordHotkey}"
-    // text stale.
-    persist_settings_preserving_update_channel(&*coord, prefs)?;
+    // Persist changed fields and notify every WebView through the shared settings path.
+    if let Some(edits) = edits {
+        persist_setting_fields(&coord, &edits)?;
+    } else {
+        persist_settings_preserving_update_channel(&coord, prefs)?;
+    }
     let prefs = coord.backend().get_preferences();
     // Sync the capsule-style atom on save: the next recording's entrance frame carries the
     // new style instead of depending on emit_capsule's ~30Hz main-thread closure sync (a
@@ -307,8 +313,13 @@ pub async fn set_settings(
 pub async fn set_settings(
     coord: CoordinatorState<'_>,
     mut prefs: UserPreferences,
+    edits: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 ) -> Result<UserPreferences, String> {
     let previous = coord.backend().get_preferences();
+    if let Some(edits) = &edits {
+        prefs = openless_core::preference_patch::patch_preferences(&prefs, edits)
+            .map_err(|e| e.to_string())?;
+    }
     let packs = coord
         .backend()
         .list_style_packs(&prefs.active_style_pack_id)
@@ -316,7 +327,11 @@ pub async fn set_settings(
     sync_style_pack_preferences(&mut prefs, &packs);
     prefs.android_overlay_trigger = prefs.android_overlay_trigger.normalized();
     invalidate_llm_tests_if_thinking_changed(&coord, &previous, &prefs).await?;
-    persist_settings_preserving_update_channel(&*coord, prefs)?;
+    if let Some(edits) = edits {
+        persist_setting_fields(&coord, &edits)?;
+    } else {
+        persist_settings_preserving_update_channel(&coord, prefs)?;
+    }
     let prefs = coord.backend().get_preferences();
     // Sync the capsule-style atom on save (same source as the Android notification capsule
     // payload; see emit_capsule).
@@ -792,4 +807,79 @@ pub(crate) fn replace_dictation_hotkey(
         )
         .map(|_| ())
         .map_err(settings_save_error)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSnapshot {
+    pub preferences: UserPreferences,
+    pub revision: u64,
+}
+
+#[tauri::command]
+pub fn get_settings_snapshot(core: CoreState<'_>) -> Result<SettingsSnapshot, String> {
+    settings_snapshot(&core)
+}
+
+fn settings_snapshot(backend: &openless_core::OpenLessBackend) -> Result<SettingsSnapshot, String> {
+    for _ in 0..3 {
+        let revision = backend.snapshot().preferences_revision;
+        let preferences = backend.get_preferences();
+        if backend.snapshot().preferences_revision == revision {
+            return Ok(SettingsSnapshot {
+                preferences,
+                revision,
+            });
+        }
+    }
+    Err("settings are changing; retry the read".into())
+}
+
+fn persist_setting_fields(
+    coord: &Coordinator,
+    edits: &std::collections::BTreeMap<String, serde_json::Value>,
+) -> Result<(), String> {
+    let _host_guard = coord.lock_settings_host();
+    openless_core::preference_patch::update_fields(
+        edits,
+        || {
+            (
+                coord.backend().snapshot().preferences_revision,
+                coord.backend().get_preferences(),
+            )
+        },
+        |mut prefs, revision| {
+            preserve_update_channel_preferences(&mut prefs, &coord.backend().get_preferences());
+            coord.backend().update_settings(
+                prefs,
+                openless_core::SettingsUpdateOptions::SETTINGS_DOCUMENT.at_revision(revision),
+                &TauriSettingsRuntime::new(coord),
+            )
+        },
+    )
+    .map(|_| ())
+    .map_err(settings_save_error)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+pub async fn update_setting_fields(
+    coord: CoordinatorState<'_>,
+    app: AppHandle,
+    edits: std::collections::BTreeMap<String, serde_json::Value>,
+) -> Result<SettingsSnapshot, String> {
+    let prefs = coord.backend().get_preferences();
+    set_settings(coord.clone(), app, prefs, Some(edits)).await?;
+    settings_snapshot(&coord.backend())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn update_setting_fields(
+    coord: CoordinatorState<'_>,
+    edits: std::collections::BTreeMap<String, serde_json::Value>,
+) -> Result<SettingsSnapshot, String> {
+    let prefs = coord.backend().get_preferences();
+    set_settings(coord.clone(), prefs, Some(edits)).await?;
+    settings_snapshot(&coord.backend())
 }

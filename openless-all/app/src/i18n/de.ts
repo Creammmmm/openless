@@ -2105,6 +2105,13 @@ export const de: typeof zhCN = {
         notWindows: 'Nur unter Windows verfügbar.',
       },
     },
+    inputMethod: {
+      guidanceTitle: 'OpenLess-Eingabemethode',
+      enableSystemIme:
+        'Aktiviere OpenLess Voice in Android → Tastatur / Eingabemethoden und wähle sie bei Bedarf aus.',
+      longPressLogo:
+        'Halte im OpenLess-Keyboard das Logo oben links gedrückt, um die systemeigenen Tastatureinstellungen zu öffnen.',
+    },
     advanced: {
       multimodalPipelineTitle: 'Multimodale Spracherkennung (experimentell)',
       multimodalPipelineTitleHint:
@@ -2341,6 +2348,7 @@ export const de: typeof zhCN = {
     },
     descriptions: {
       general: 'Mikrofon wählen, Aufnahme und Texteingabe anpassen oder dein Smartphone verbinden.',
+      inputMethod: 'Android-Overlay und Eingabemethode für die mobile Eingabe konfigurieren.',
       shortcuts: 'Kurzbefehle einrichten und Aktionen für ausgewählten Text festlegen.',
       services:
         'Spracherkennungs- und Textverarbeitungsdienste wählen. Kanäle, lokale Modelle und Verbindungen verwalten.',
@@ -2353,6 +2361,7 @@ export const de: typeof zhCN = {
     searchKeywords: {
       general:
         'Mikrofon Aufnahme Eingabe Smartphone Ferneingabe LAN PIN Kapsel Stumm Start Autostart',
+      inputMethod: 'Eingabemethode IME Tastatur Overlay Android',
       shortcuts:
         'Kurzbefehl Hotkey Taste Tastenkombination Auswahl Überarbeitung Sprachbearbeitung',
       services:
@@ -2367,6 +2376,7 @@ export const de: typeof zhCN = {
       appearance: 'Darstellung und Sprache',
       shortcuts: 'Kurzbefehle und Auswahl',
       general: 'Aufnahme und Eingabe',
+      inputMethod: 'Eingabemethode',
       services: 'KI-Dienste und Modelle',
       privacy: 'Berechtigungen und Daten',
       advanced: 'Experimente und Erweiterungen',

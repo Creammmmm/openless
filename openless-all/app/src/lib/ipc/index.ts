@@ -23,6 +23,8 @@ export {
   BACKEND_CONTRACT_VERSION,
   getStartupSnapshot,
   getSettings,
+  getSettingsSnapshot,
+  updateSettingFields,
   getDefaultStyleSystemPrompts,
   setSettings,
 } from './settings';

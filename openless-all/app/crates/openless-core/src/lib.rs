@@ -369,3 +369,5 @@ pub use vocabulary::{
     builtin_vocab_presets, list_vocab_presets, resolve_vocab_presets, save_vocab_presets,
     DictionaryStore,
 };
+
+pub mod preference_patch;

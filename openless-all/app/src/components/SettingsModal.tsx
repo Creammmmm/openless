@@ -18,6 +18,7 @@ import type { OS } from './WindowChrome';
 import {
   AboutTab,
   GeneralTab,
+  InputMethodTab,
   ServicesTab,
   PrivacyTab,
   AdvancedTab,
@@ -84,7 +85,7 @@ export function SettingsModal({
     });
   };
   const supportsShortcuts = platformCaps?.supportsDesktopHotkey ?? os !== 'android';
-  const sections = visibleSettingsSections(supportsShortcuts).map((item) => ({
+  const sections = visibleSettingsSections(supportsShortcuts, platformCaps?.platform).map((item) => ({
     ...item,
     title: t(`modal.sections.${item.id}`),
     description: t(`modal.descriptions.${item.id}`),
@@ -151,6 +152,12 @@ export function SettingsModal({
   useEffect(() => {
     if (!supportsShortcuts && section === 'shortcuts') setSection('general');
   }, [supportsShortcuts, section]);
+
+  useEffect(() => {
+    if (platformCaps && platformCaps.platform !== 'android' && section === 'inputMethod') {
+      setSection('general');
+    }
+  }, [platformCaps, section]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -690,6 +697,7 @@ export function SettingsModal({
                       }}
                     >
                       {section === 'general' && <GeneralTab />}
+                      {section === 'inputMethod' && <InputMethodTab />}
                       {section === 'shortcuts' && <ShortcutsTab />}
                       {section === 'appearance' && <AppearanceTab />}
                       {section === 'services' && <ServicesTab />}
