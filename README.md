@@ -402,7 +402,7 @@ The `v<version>-tauri` / `v<version>-Beta.N-tauri` workflows build the macOS, Wi
 
 The dictation pipeline: `hotkey edge → Recorder.start + ASR.openSession → [audio frames] → hotkey edge → Recorder.stop + ASR.sendLastFrame → Polish → Insert → History.save`.
 
-See [AGENTS.md](AGENTS.md) for repository rules and [Architecture](docs/architecture.md) for module responsibilities and wiring.
+See [Contributing workflow](#contributing-workflow) and [Releasing](RELEASING.md) for contribution and release rules, and [Architecture](docs/architecture.md) for module responsibilities and wiring.
 
 ## Roadmap
 

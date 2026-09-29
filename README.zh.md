@@ -409,7 +409,7 @@ egui UI  ── Linux Adapter（无 Tauri/WebKitGTK）───┘
 
 听写流水线:`hotkey edge → Recorder.start + ASR.openSession → [audio frames] → hotkey edge → Recorder.stop + ASR.sendLastFrame → Polish → Insert → History.save`。
 
-仓库规则见 [AGENTS.md](AGENTS.md)，模块职责与接线见[架构文档](docs/architecture.md)。
+贡献与发布规则见[贡献流程](#贡献流程)和[发布规范](RELEASING.md)，模块职责与接线见[架构文档](docs/architecture.md)。
 
 ## 路线图
 
