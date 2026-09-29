@@ -293,6 +293,7 @@ export const en: typeof zhCN = {
     errorPrefix: 'Could not continue: ',
     question: 'Ask a question',
     edit: 'Edit selection',
+    compose: 'Help me write',
     cancel: 'Cancel',
   },
   qa: {
@@ -1193,7 +1194,7 @@ export const en: typeof zhCN = {
   settings: {
     selectionWorkspace: {
       title: 'Selection Assistant',
-      hint: 'Select text, then use one shortcut: polish when voice edit is off; hold and speak when voice edit is on, then choose Ask or Edit.',
+      hint: 'With a selection, one shortcut polishes (voice edit off) or takes a spoken instruction to ask or edit. With no selection but focus in a text field, speak to Help me write a draft or ask a question.',
       polishHotkey: 'Selection assistant shortcut',
       polishHotkeyDesc:
         'Polishes directly when voice edit is off; hold to speak when voice edit is on (recording follows global settings).',

@@ -810,12 +810,11 @@ export function Capsule({ os: forcedOs }: CapsuleProps = {}) {
         setMessage(p.message ?? undefined);
         const previous = capsuleStateRef.current;
         capsuleStateRef.current = p.state;
-        if (
-          p.state === 'recording' &&
-          previous !== 'recording' &&
-          previous !== 'transcribing' &&
-          previous !== 'polishing'
-        ) {
+        // Any new recording session must drop prior ASR text — including when
+        // the previous capsule was still transcribing/polishing/done from
+        // dictation (selection-voice Start used to keep the stale stream).
+        if (p.state === 'recording' && previous !== 'recording') {
+          transcriptViewRef.current = { sessionId: null, sequence: 0, text: '' };
           setLocalAsrText('');
         }
         setTranslation(p.translation === true);

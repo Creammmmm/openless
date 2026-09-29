@@ -269,6 +269,7 @@ export const zhCN = {
     errorPrefix: '未能继续：',
     question: '提问',
     edit: '编辑选区',
+    compose: '帮我写',
     cancel: '取消',
   },
   qa: {
@@ -1146,7 +1147,7 @@ export const zhCN = {
   settings: {
     selectionWorkspace: {
       title: '选区助手',
-      hint: '选中文字后按同一快捷键：关闭语音编辑时直接润色；开启后口述指令，说完再选择「提问」或「编辑选区」。',
+      hint: '有选区时按同一快捷键：关闭语音编辑则润色；开启后口述指令，可提问或编辑选区。无选区但光标在文本框时：可「帮我写」成稿或提问。',
       polishHotkey: '选区助手快捷键',
       polishHotkeyDesc:
         '关闭语音编辑时直接润色；开启语音编辑时按住口述指令（录音方式跟随全局设置）。',

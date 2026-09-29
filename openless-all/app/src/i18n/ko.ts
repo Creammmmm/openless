@@ -278,6 +278,7 @@ export const ko: typeof zhCN = {
     errorPrefix: '계속할 수 없습니다: ',
     question: '질문하기',
     edit: '선택 영역 편집',
+    compose: '대신 작성',
     cancel: '취소',
   },
   qa: {

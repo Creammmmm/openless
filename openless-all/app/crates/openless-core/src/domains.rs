@@ -597,6 +597,11 @@ pub enum SelectionVoiceDisposition {
         selection: SelectionCapture,
         instruction: String,
     },
+    Compose {
+        session_id: SessionId,
+        selection: SelectionCapture,
+        instruction: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -632,6 +637,9 @@ impl SelectionVoiceDisposition {
                 Some(crate::selection_voice_intent::SelectionVoiceIntent::Question)
             }
             Self::Edit { .. } => Some(crate::selection_voice_intent::SelectionVoiceIntent::Edit),
+            Self::Compose { .. } => {
+                Some(crate::selection_voice_intent::SelectionVoiceIntent::Compose)
+            }
         }
     }
 }

@@ -849,7 +849,7 @@ pub fn validate_preference_value(field: &PreferenceField, value: &Value) -> Docu
         "outputLanguagePreference" => &["auto", "zhCn", "zhTw", "en", "ja", "ko"],
         "selectionPolishOutputMode" => &["directReplace", "previewConfirm"],
         "selectionVoiceIntentMode" => &["prompt", "auto", "manual", "heuristic"],
-        "selectionVoiceManualIntent" => &["question", "edit"],
+        "selectionVoiceManualIntent" => &["question", "edit", "compose"],
         "selectionVoiceEditPlanFormat" => &["xml", "json"],
         "updateChannel" => &["stable", "beta"],
         "themeMode" => &["system", "light", "dark"],

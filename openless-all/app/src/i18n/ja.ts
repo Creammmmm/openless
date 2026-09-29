@@ -284,6 +284,7 @@ export const ja: typeof zhCN = {
     errorPrefix: '続行できません：',
     question: '質問する',
     edit: '選択範囲を編集',
+    compose: '書いて',
     cancel: 'キャンセル',
   },
   qa: {

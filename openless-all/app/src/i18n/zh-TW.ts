@@ -269,6 +269,7 @@ export const zhTW: typeof zhCN = {
     errorPrefix: '未能繼續：',
     question: '提問',
     edit: '編輯選區',
+    compose: '幫我寫',
     cancel: '取消',
   },
   qa: {

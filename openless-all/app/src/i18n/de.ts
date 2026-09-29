@@ -294,6 +294,7 @@ export const de: typeof zhCN = {
     errorPrefix: 'Fortsetzen fehlgeschlagen: ',
     question: 'Eine Frage stellen',
     edit: 'Auswahl bearbeiten',
+    compose: 'Schreibhilfe',
     cancel: 'Abbrechen',
   },
   qa: {

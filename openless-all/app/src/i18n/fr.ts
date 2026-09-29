@@ -299,6 +299,7 @@ export const fr: typeof zhCN = {
     errorPrefix: 'Impossible de continuer : ',
     question: 'Poser une question',
     edit: 'Modifier la sélection',
+    compose: 'Aide-moi à écrire',
     cancel: 'Annuler',
   },
   qa: {

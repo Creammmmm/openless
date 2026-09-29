@@ -261,7 +261,7 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 export type SelectionPolishOutputMode = 'directReplace' | 'previewConfirm';
 
 export type SelectionVoiceIntentMode = 'prompt' | 'auto' | 'manual' | 'heuristic';
-export type SelectionVoiceManualIntent = 'question' | 'edit';
+export type SelectionVoiceManualIntent = 'question' | 'edit' | 'compose';
 /** Preferred EditPlan serialization when parsing selection-voice model output. */
 export type EditPlanFormat = 'xml' | 'json';
 

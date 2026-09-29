@@ -23,9 +23,9 @@ use crate::errors::{BackendError, BackendErrorCode};
 use crate::events::{BackendEventKind, BackendEventPublisher};
 use crate::ports::{TextPolisher, TextStreamChunk, TextStreamSink};
 use crate::selection_voice_intent::{
-    classify_selection_voice_intent_with_provider_result, clean_selection_voice_translation_output,
-    infer_selection_voice_translation_target, selection_voice_instruction_looks_like_translation,
-    SelectionVoiceIntent,
+    classify_selection_voice_intent_with_provider_result, clean_selection_voice_compose_output,
+    clean_selection_voice_translation_output, infer_selection_voice_translation_target,
+    selection_voice_instruction_looks_like_translation, SelectionVoiceIntent,
 };
 use crate::shared_types::SelectionPolishOutputMode;
 use crate::style_pack_store::StylePackStore;
@@ -97,7 +97,7 @@ impl SelectionVoiceState {
     }
 
     fn disposition(
-        &self,
+        &mut self,
         intent: SelectionVoiceIntent,
     ) -> Result<SelectionVoiceDisposition, BackendError> {
         let session_id = self
@@ -111,6 +111,14 @@ impl SelectionVoiceState {
             .instruction_polished
             .clone()
             .ok_or_else(|| invalid_state("selection voice instruction is unavailable"))?;
+        // Empty draft cannot run EditPlan (`EmptyDraft`); coerce Edit → Compose
+        // for picker/manual/auto-edit on empty selection (#1100 / Bugbot).
+        let intent = if intent == SelectionVoiceIntent::Edit && selection.text.trim().is_empty() {
+            SelectionVoiceIntent::Compose
+        } else {
+            intent
+        };
+        self.resolved_intent = Some(intent);
         Ok(match intent {
             SelectionVoiceIntent::Question => SelectionVoiceDisposition::Question {
                 session_id,
@@ -118,6 +126,11 @@ impl SelectionVoiceState {
                 instruction,
             },
             SelectionVoiceIntent::Edit => SelectionVoiceDisposition::Edit {
+                session_id,
+                selection,
+                instruction,
+            },
+            SelectionVoiceIntent::Compose => SelectionVoiceDisposition::Compose {
                 session_id,
                 selection,
                 instruction,
@@ -246,12 +259,6 @@ impl SelectionVoiceService {
         phase: SelectionVoicePhase,
     ) -> Result<SessionId, BackendError> {
         let _runtime = self.begin_runtime_work()?;
-        if capture.text.trim().is_empty() {
-            return Err(BackendError::new(
-                BackendErrorCode::InvalidArgument,
-                "selected text must not be empty",
-            ));
-        }
         let mut state = self
             .state
             .write()
@@ -293,6 +300,57 @@ impl SelectionVoiceService {
             BackendEventKind::SelectionVoiceStateChanged(snapshot),
         );
         Ok(session_id)
+    }
+
+    /// Generate plain draft text for Compose intent and surface ReadyToApply.
+    /// Empty selection is allowed; PreviewConfirm and DirectReplace both use
+    /// this path so the host can insert without a non-empty QA edit_preview.
+    fn prepare_compose(
+        &self,
+        session_id: SessionId,
+        owner_session_id: Option<SessionId>,
+    ) -> BoxFuture<'static, Result<SelectionVoiceEditAction, BackendError>> {
+        let service = self.clone();
+        Box::pin(async move {
+            let _runtime = service.begin_runtime_work()?;
+            let instruction = {
+                let state = service
+                    .state
+                    .read()
+                    .expect("selection voice state lock poisoned");
+                state.ensure_session(session_id)?;
+                if state.phase != SelectionVoicePhase::Processing
+                    || state.resolved_intent != Some(SelectionVoiceIntent::Compose)
+                {
+                    return Err(invalid_state("selection voice compose is not ready"));
+                }
+                let _selection = state
+                    .selection
+                    .as_ref()
+                    .ok_or_else(|| invalid_state("selection voice capture is unavailable"))?;
+                state.instruction_polished.clone().ok_or_else(|| {
+                    invalid_state("selection voice instruction is unavailable")
+                })?
+            };
+
+            let (text, summary) = service
+                .workflow
+                .generate_compose(session_id, &instruction)
+                .await?;
+            service
+                .set_preview(SelectionVoicePreviewUpdate {
+                    session_id,
+                    owner_session_id,
+                    text,
+                    summary,
+                })
+                .await?;
+            let preview = service
+                .preview(owner_session_id)
+                .await?
+                .ok_or_else(|| invalid_state("selection voice preview is unavailable"))?;
+            Ok(SelectionVoiceEditAction::ReadyToApply { preview })
+        })
     }
 }
 
@@ -529,6 +587,27 @@ impl SelectionVoiceWorkflow {
             operations: vec![EditOperation::FullRewrite { text: translated }],
             summary: Some(format!("翻译为{target_language}")),
         })
+    }
+
+    async fn generate_compose(
+        &self,
+        session_id: SessionId,
+        instruction: &str,
+    ) -> Result<(String, Option<String>), BackendError> {
+        let preferences = self.preferences.get();
+        let input = crate::prompts::voice_compose_user_prompt(instruction, None);
+        let system_prompt = crate::prompts::voice_compose_system_prompt();
+        let raw = self
+            .model_text(session_id, &preferences, input, system_prompt, None, false)
+            .await?;
+        let text = clean_selection_voice_compose_output(&raw);
+        if text.is_empty() {
+            return Err(BackendError::new(
+                BackendErrorCode::Provider,
+                "compose produced empty text",
+            ));
+        }
+        Ok((text, None))
     }
 
     async fn generate_preview(
@@ -932,15 +1011,35 @@ impl SelectionVoiceApi for SelectionVoiceService {
                 );
                 return Ok(SelectionVoiceDisposition::AwaitingIntent { prompt });
             }
-            let classification = classify_selection_voice_intent_with_provider_result(
-                request.intent_mode,
-                request.manual_intent,
-                &request.question_keywords,
-                &request.polished,
-                request.auto_classification.as_deref(),
-            );
-            state.resolved_intent = Some(classification.intent);
-            let disposition = state.disposition(classification.intent)?;
+            let classification = {
+                let selection_empty = state
+                    .selection
+                    .as_ref()
+                    .map(|capture| capture.text.trim().is_empty())
+                    .unwrap_or(true);
+                classify_selection_voice_intent_with_provider_result(
+                    request.intent_mode,
+                    request.manual_intent,
+                    &request.question_keywords,
+                    &request.polished,
+                    selection_empty,
+                    request.auto_classification.as_deref(),
+                )
+            };
+            let intent = {
+                let selection_empty = state
+                    .selection
+                    .as_ref()
+                    .map(|capture| capture.text.trim().is_empty())
+                    .unwrap_or(true);
+                if classification.intent == SelectionVoiceIntent::Edit && selection_empty {
+                    SelectionVoiceIntent::Compose
+                } else {
+                    classification.intent
+                }
+            };
+            state.resolved_intent = Some(intent);
+            let disposition = state.disposition(intent)?;
             let snapshot = state.snapshot();
             drop(state);
             events.publish(
@@ -962,6 +1061,7 @@ impl SelectionVoiceApi for SelectionVoiceService {
             let intent = match intent.trim().to_ascii_lowercase().as_str() {
                 "question" => SelectionVoiceIntent::Question,
                 "edit" => SelectionVoiceIntent::Edit,
+                "compose" => SelectionVoiceIntent::Compose,
                 other => {
                     return Err(BackendError::new(
                         BackendErrorCode::InvalidArgument,
@@ -978,6 +1078,16 @@ impl SelectionVoiceApi for SelectionVoiceService {
             }
             state.intent_prompt = None;
             state.phase = SelectionVoicePhase::Processing;
+            let selection_empty = state
+                .selection
+                .as_ref()
+                .map(|capture| capture.text.trim().is_empty())
+                .unwrap_or(true);
+            let intent = if intent == SelectionVoiceIntent::Edit && selection_empty {
+                SelectionVoiceIntent::Compose
+            } else {
+                intent
+            };
             state.resolved_intent = Some(intent);
             let disposition = state.disposition(intent)?;
             let snapshot = state.snapshot();
@@ -1000,7 +1110,8 @@ impl SelectionVoiceApi for SelectionVoiceService {
             let session_id = match &disposition {
                 SelectionVoiceDisposition::AwaitingIntent { prompt } => prompt.session_id,
                 SelectionVoiceDisposition::Question { session_id, .. }
-                | SelectionVoiceDisposition::Edit { session_id, .. } => *session_id,
+                | SelectionVoiceDisposition::Edit { session_id, .. }
+                | SelectionVoiceDisposition::Compose { session_id, .. } => *session_id,
             };
             let routed = async {
                 match disposition {
@@ -1035,6 +1146,18 @@ impl SelectionVoiceApi for SelectionVoiceService {
                             }
                             SelectionVoiceEditAction::ReadyToApply { preview } => {
                                 Ok(SelectionVoiceRoute::ReadyToApply { preview })
+                            }
+                        }
+                    }
+                    SelectionVoiceDisposition::Compose { .. } => {
+                        match service.prepare_compose(session_id, None).await? {
+                            SelectionVoiceEditAction::ReadyToApply { preview } => {
+                                Ok(SelectionVoiceRoute::ReadyToApply { preview })
+                            }
+                            SelectionVoiceEditAction::OpenConversation { .. } => {
+                                Err(invalid_state(
+                                    "compose must deliver ReadyToApply, not OpenConversation",
+                                ))
                             }
                         }
                     }

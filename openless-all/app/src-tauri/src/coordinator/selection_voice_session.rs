@@ -3,8 +3,7 @@
 use std::sync::{Arc, Weak};
 
 use super::{
-    emit_capsule, hide_core_capsule_if_current, schedule_capsule_idle, Coordinator, Inner,
-    CAPSULE_AUTO_HIDE_DELAY_MS,
+    emit_capsule, schedule_capsule_idle, Coordinator, Inner, CAPSULE_AUTO_HIDE_DELAY_MS,
 };
 use crate::coordinator_state::SessionId;
 use crate::selection::SelectionInsertionTarget;
@@ -123,14 +122,15 @@ impl openless_core::RecordingControlSink for SelectionVoiceRecordingControl {
 fn selection_voice_user_message(error: &str) -> String {
     match error {
         "dictationActive" => "正在听写，请先结束录音".into(),
-        "selectionVoiceNoSelection" => "请先选中文字".into(),
-        "selectionVoiceTargetUnavailable" => "无法定位选区，请重试".into(),
+        "selectionVoiceNoSelection" => "请先选中文字，或将光标放在可输入的文本框中".into(),
+        "selectionVoiceTargetUnavailable" => "无法定位输入目标，请先点击文本框后再试".into(),
         "selectionVoiceBusy" => "选区语音会话进行中".into(),
         other => other.into(),
     }
 }
 
 fn emit_selection_voice_begin_error(inner: &Arc<Inner>, error: &str) {
+    release_selection_voice_capsule_claim(inner);
     emit_capsule(
         inner,
         CapsuleState::Error,
@@ -198,6 +198,51 @@ pub(super) struct SelectionVoiceHostState {
     /// preview remain exclusively owned by `openless-core`.
     target_session_id: Option<CoreSessionId>,
     insertion_target: SelectionInsertionTarget,
+    /// Claim the shared capsule before clipboard capture finishes so a late
+    /// dictation Done/Idle cannot paint 「录音已完成」over the new session.
+    owns_capsule: bool,
+    /// Live mic levels only while Recording. Cleared on stop → Transcribing so
+    /// late `SelectionVoiceLevel` cannot re-emit Recording and bump the capsule
+    /// epoch (which would make hide_core_capsule_if_current no-op).
+    accepts_level: bool,
+}
+
+fn claim_selection_voice_capsule(inner: &Arc<Inner>) {
+    let mut host = inner.selection_voice_host.lock();
+    host.owns_capsule = true;
+    host.accepts_level = true;
+}
+
+fn release_selection_voice_capsule_claim(inner: &Arc<Inner>) {
+    let mut host = inner.selection_voice_host.lock();
+    host.owns_capsule = false;
+    host.accepts_level = false;
+}
+
+fn stop_selection_voice_level_meter(inner: &Arc<Inner>) {
+    inner.selection_voice_host.lock().accepts_level = false;
+}
+
+pub(super) fn selection_voice_owns_capsule(inner: &Arc<Inner>) -> bool {
+    inner.selection_voice_host.lock().owns_capsule
+}
+
+/// Accept live meter frames only while Recording for this claimed session.
+pub(super) fn selection_voice_accepts_level(inner: &Arc<Inner>, session_id: &str) -> bool {
+    let host = inner.selection_voice_host.lock();
+    host.owns_capsule
+        && host.accepts_level
+        && host
+            .target_session_id
+            .as_ref()
+            .is_some_and(|id| id.to_string() == session_id)
+}
+
+/// Terminal dismiss: Done (visible end anim) then Idle after the same dwell as
+/// dictation — never jump straight to Idle (instant window.hide kills Siri exit).
+fn finish_selection_voice_capsule(inner: &Arc<Inner>, message: Option<String>) {
+    emit_capsule(inner, CapsuleState::Done, 0.0, 0, message, None);
+    schedule_capsule_idle(inner, CAPSULE_AUTO_HIDE_DELAY_MS);
 }
 
 fn core_error(error: BackendError) -> String {
@@ -304,31 +349,41 @@ pub(super) async fn handle_selection_voice_released(inner: &Arc<Inner>) {
 }
 
 async fn begin_selection_voice_session(inner: &Arc<Inner>) -> Result<(), String> {
+    // Claim + show Recording before Ctrl+C capture (~0.5–1s). Otherwise the
+    // previous dictation Done / streaming text stays visible as 「录音已完成」.
+    claim_selection_voice_capsule(inner);
+    emit_capsule(inner, CapsuleState::Recording, 0.0, 0, None, None);
+
     let (selection_opt, insertion_target, capture_diag) =
         crate::selection::resolve_selection_workspace_capture_with_diag();
     log::info!(
         "[selection-voice] begin capture diag={}",
         capture_diag.summary()
     );
-    let selection = match selection_opt {
-        Some(selection) => selection,
-        None => {
-            log::warn!(
-                "[selection-voice] begin failed: selectionVoiceNoSelection ({})",
-                capture_diag.summary()
-            );
-            return Err("selectionVoiceNoSelection".into());
-        }
-    };
     if !crate::selection::selection_insertion_target_is_captured(&insertion_target) {
         log::warn!(
             "[selection-voice] begin failed: selectionVoiceTargetUnavailable ({})",
             capture_diag.summary()
         );
+        release_selection_voice_capsule_claim(inner);
         return Err("selectionVoiceTargetUnavailable".into());
     }
+    // Empty selection is allowed when the insertion target is valid (Help me write / QA).
+    let selection = match selection_opt {
+        Some(selection) => selection,
+        None => {
+            log::info!(
+                "[selection-voice] begin with empty selection (compose/qa path) ({})",
+                capture_diag.summary()
+            );
+            crate::selection::SelectionContext {
+                text: String::new(),
+                source_app: capture_diag.front_app.clone(),
+            }
+        }
+    };
 
-    let session_id = inner
+    let session_id = match inner
         .backend
         .services()
         .selection_voice
@@ -337,13 +392,23 @@ async fn begin_selection_voice_session(inner: &Arc<Inner>) -> Result<(), String>
             source_app: selection.source_app,
         })
         .await
-        .map_err(core_error)?;
+    {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            release_selection_voice_capsule_claim(inner);
+            return Err(core_error(error));
+        }
+    };
     {
         let mut host = inner.selection_voice_host.lock();
         host.target_session_id = Some(session_id);
         host.insertion_target = insertion_target;
+        host.owns_capsule = true;
+        host.accepts_level = true;
     }
 
+    // Re-assert Recording after core begin so a racing dictation event cannot
+    // leave the capsule on Done while the mic is open.
     emit_capsule(inner, CapsuleState::Recording, 0.0, 0, None, None);
     let recording_control = Arc::new(SelectionVoiceRecordingControl::new(inner));
     match inner
@@ -434,9 +499,11 @@ async fn end_selection_voice_session(
         .mark_processing(session_id)
         .await
         .map_err(core_error)?;
-    // Releasing only ends the recording; the thinking animation stays until
-    // instruction recognition, polish, and replacement complete.
-    let processing_epoch = emit_capsule(inner, CapsuleState::Transcribing, 0.0, 0, None, None);
+    // Stop meter before Transcribing so late levels cannot clobber processing
+    // or bump capsule_event_epoch past the hide/Done gate.
+    stop_selection_voice_level_meter(inner);
+    // Keep processing visible until recognition and insertion finish.
+    let _ = emit_capsule(inner, CapsuleState::Transcribing, 0.0, 0, None, None);
     let workflow: Result<EndWorkflowOutcome, String> = async {
         let capture = inner
             .selection_voice_capture
@@ -476,10 +543,12 @@ async fn end_selection_voice_session(
                 Some("未识别到指令".into()),
                 None,
             );
-            schedule_capsule_idle(inner, 2000);
+            schedule_capsule_idle(inner, CAPSULE_AUTO_HIDE_DELAY_MS);
             return Ok(EndWorkflowOutcome::Finished);
         }
 
+        // Intent classify + compose/edit LLM — match dictation Polishing orb.
+        emit_capsule(inner, CapsuleState::Polishing, 0.0, 0, None, None);
         let disposition = inner
             .backend
             .services()
@@ -487,7 +556,7 @@ async fn end_selection_voice_session(
             .process_transcript(session_id, transcript)
             .await
             .map_err(core_error)?;
-        continue_selection_voice_disposition(inner, disposition, processing_epoch).await
+        continue_selection_voice_disposition(inner, disposition).await
     }
     .await;
 
@@ -533,7 +602,6 @@ enum EndWorkflowOutcome {
 async fn continue_selection_voice_disposition(
     inner: &Arc<Inner>,
     disposition: SelectionVoiceDisposition,
-    processing_epoch: u64,
 ) -> Result<EndWorkflowOutcome, String> {
     let route = inner
         .backend
@@ -544,17 +612,26 @@ async fn continue_selection_voice_disposition(
         .map_err(core_error)?;
     match route {
         SelectionVoiceRoute::AwaitingIntent { .. } => {
-            hide_core_capsule_if_current(inner, processing_epoch);
+            // Keep insertion target for later confirm; only drop meter + capsule claim
+            // for Done dwell. Re-claim in continue_confirmed_selection_voice_intent.
+            stop_selection_voice_level_meter(inner);
+            release_selection_voice_capsule_claim(inner);
+            finish_selection_voice_capsule(inner, Some("请选择意图".into()));
             inner.host.show_selection_voice_intent_prompt();
             Ok(EndWorkflowOutcome::AwaitingIntent)
         }
         SelectionVoiceRoute::QuestionCompleted { session_id } => {
             clear_host_session(inner, session_id);
-            hide_core_capsule_if_current(inner, processing_epoch);
+            finish_selection_voice_capsule(inner, Some("已提交问题".into()));
             Ok(EndWorkflowOutcome::Finished)
         }
         SelectionVoiceRoute::EditConversationOpened { .. } => {
-            hide_core_capsule_if_current(inner, processing_epoch);
+            // Keep opaque insertion_target for QA apply (prebound session still
+            // resolves via target_for_session). Only drop meter + claim so Done
+            // can dismiss and dictation is not blocked forever.
+            stop_selection_voice_level_meter(inner);
+            release_selection_voice_capsule_claim(inner);
+            finish_selection_voice_capsule(inner, Some("已打开润色".into()));
             Ok(EndWorkflowOutcome::Finished)
         }
         SelectionVoiceRoute::ReadyToApply { preview } => {
@@ -576,10 +653,18 @@ impl Coordinator {
         disposition: SelectionVoiceDisposition,
     ) -> Result<(), String> {
         self.inner.host.hide_selection_voice_intent_prompt();
-        let processing_epoch =
-            emit_capsule(&self.inner, CapsuleState::Polishing, 0.0, 0, None, None);
+        // Re-claim so concurrent dictation cannot overwrite Polishing/Done while
+        // post-intent LLM / apply still runs (AwaitingIntent released the claim).
+        {
+            let mut host = self.inner.selection_voice_host.lock();
+            if host.target_session_id == Some(session_id) {
+                host.owns_capsule = true;
+                host.accepts_level = false;
+            }
+        }
+        emit_capsule(&self.inner, CapsuleState::Polishing, 0.0, 0, None, None);
         let result =
-            continue_selection_voice_disposition(&self.inner, disposition, processing_epoch)
+            continue_selection_voice_disposition(&self.inner, disposition)
                 .await
                 .map(|_| ());
         if let Err(error) = &result {
@@ -620,7 +705,7 @@ impl Coordinator {
         });
         if was_current {
             self.inner.host.hide_selection_voice_intent_prompt();
-            emit_capsule(&self.inner, CapsuleState::Idle, 0.0, 0, None, None);
+            emit_capsule(&self.inner, CapsuleState::Cancelled, 0.0, 0, None, None);
             schedule_capsule_idle(&self.inner, 0);
         }
     }
@@ -696,12 +781,16 @@ impl Coordinator {
         if !crate::selection::reactivate_selection_insertion_target(&insertion_target) {
             return Err("selectionVoiceTargetUnavailable".to_string());
         }
-        let validation = crate::selection::validate_selection_insertion_target(
-            &insertion_target,
-            &ticket.source_text,
-        );
-        if let Some(code) = validation.error_code() {
-            return Err(code.to_string());
+        // Empty source_text = caret insert (Help me write). Skip Ctrl+C content
+        // re-validation that assumes a non-empty selection (#1014).
+        if !ticket.source_text.trim().is_empty() {
+            let validation = crate::selection::validate_selection_insertion_target(
+                &insertion_target,
+                &ticket.source_text,
+            );
+            if let Some(code) = validation.error_code() {
+                return Err(code.to_string());
+            }
         }
         let status = self.inner.inserter.insert(
             &ticket.replacement_text,
@@ -713,8 +802,7 @@ impl Coordinator {
 
     pub(crate) fn finish_selection_voice_preview_host(&self, session_id: CoreSessionId) {
         clear_host_session(&self.inner, session_id);
-        emit_capsule(&self.inner, CapsuleState::Idle, 0.0, 0, None, None);
-        schedule_capsule_idle(&self.inner, 0);
+        finish_selection_voice_capsule(&self.inner, Some("已完成".into()));
     }
 }
 
@@ -722,6 +810,56 @@ impl Coordinator {
 mod tests {
     use super::*;
     use openless_core::RecordingControlSink;
+
+    #[test]
+    fn selection_voice_accepts_level_only_for_claimed_owner_session() {
+        let (coordinator, _, data_dir) =
+            super::super::hotkey_loops::windows_less_computer_tests::fixture_coordinator(
+                crate::types::HotkeyMode::Toggle,
+                std::time::Duration::ZERO,
+            );
+        let id = CoreSessionId::new();
+        let other = CoreSessionId::new();
+        assert!(!selection_voice_accepts_level(
+            &coordinator.inner,
+            &id.to_string()
+        ));
+        {
+            let mut host = coordinator.inner.selection_voice_host.lock();
+            host.owns_capsule = true;
+            host.accepts_level = true;
+            host.target_session_id = Some(id);
+        }
+        assert!(selection_voice_accepts_level(
+            &coordinator.inner,
+            &id.to_string()
+        ));
+        assert!(!selection_voice_accepts_level(
+            &coordinator.inner,
+            &other.to_string()
+        ));
+        // Meter off while claim remains: processing must reject late levels.
+        stop_selection_voice_level_meter(&coordinator.inner);
+        assert!(!selection_voice_accepts_level(
+            &coordinator.inner,
+            &id.to_string()
+        ));
+        {
+            let mut host = coordinator.inner.selection_voice_host.lock();
+            host.accepts_level = true;
+        }
+        assert!(selection_voice_accepts_level(
+            &coordinator.inner,
+            &id.to_string()
+        ));
+        release_selection_voice_capsule_claim(&coordinator.inner);
+        assert!(!selection_voice_accepts_level(
+            &coordinator.inner,
+            &id.to_string()
+        ));
+        drop(coordinator);
+        std::fs::remove_dir_all(data_dir).unwrap();
+    }
 
     #[test]
     fn paste_dispatch_is_a_terminal_receipt_without_claiming_inserted() {

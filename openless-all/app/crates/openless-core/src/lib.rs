@@ -260,7 +260,7 @@ pub use events::{
     LessComputerVoiceMode, LessComputerVoiceOutcome, LessComputerVoicePhase, LocalAsrDownloadPhase,
     LocalAsrDownloadProgress, LocalAsrPreparePhase, LocalAsrPrepareProgress, LocalAsrRuntimeKind,
     QaRecordingLevel, QaStateEvent, QaStateKind, RecordingControlAction, RecordingControlRequest,
-    RemoteInputErrorEvent, RemoteInputRuntimeEvent,
+    RemoteInputErrorEvent, RemoteInputRuntimeEvent, SelectionVoiceRecordingLevel,
 };
 pub use external_audio::{AudioRecorderRouter, ExternalAudioRecorder};
 pub use history::{HistoryStore, HISTORY_CAP};

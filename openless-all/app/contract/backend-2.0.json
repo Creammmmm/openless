@@ -65,6 +65,7 @@
       "microphone_devices_changed",
       "qa_level",
       "qa_state",
+      "selection_voice_level",
       "remote_input_status_changed",
       "remote_input_failed",
       "vocabulary_suggestions_changed"
@@ -100,6 +101,7 @@
       "microphone_devices_changed": {"sequence": 1, "sessionId": null, "kind": {"type": "microphone_devices_changed"}},
       "qa_level": {"sequence": 1, "sessionId": null, "kind": {"type": "qa_level", "payload": {"sessionId": "qa", "level": 0.5}}},
       "qa_state": {"sequence": 1, "sessionId": null, "kind": {"type": "qa_state", "payload": {"kind": "idle"}}},
+      "selection_voice_level": {"sequence": 1, "sessionId": "00000000-0000-4000-8000-000000000000", "kind": {"type": "selection_voice_level", "payload": {"sessionId": "00000000-0000-4000-8000-000000000000", "level": 0.5, "elapsedMs": 120}}},
       "remote_input_status_changed": {"sequence": 1, "sessionId": null, "kind": {"type": "remote_input_status_changed", "payload": {"running": false}}},
       "remote_input_failed": {"sequence": 1, "sessionId": null, "kind": {"type": "remote_input_failed", "payload": {"reason": "unavailable", "port": 18989}}},
       "vocabulary_suggestions_changed": {"sequence": 1, "sessionId": null, "kind": {"type": "vocabulary_suggestions_changed", "payload": [{"id": "1", "pattern": "old", "replacement": "new"}]}}

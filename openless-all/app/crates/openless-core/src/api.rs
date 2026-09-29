@@ -305,6 +305,7 @@ struct SelectionVoiceRecordingProgress {
     session_id: SessionId,
     selection_voice: Arc<dyn crate::domains::SelectionVoiceApi>,
     control: Arc<dyn crate::ports::RecordingControlSink>,
+    events: BackendEventPublisher,
     task_spawner: Arc<dyn TaskSpawner>,
     started_at: std::time::Instant,
     silence: Mutex<Option<crate::silence_auto_stop::SilenceAutoStop>>,
@@ -559,6 +560,21 @@ impl crate::ports::RecordingProgressSink for QaRecordingProgress {
 
 impl crate::ports::RecordingProgressSink for SelectionVoiceRecordingProgress {
     fn publish_level(&self, elapsed_ms: u64, level: f32) -> Result<(), BackendError> {
+        let level = if level.is_finite() {
+            level.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        // Shared capsule (Siri / bars) needs live meter updates; silence policy
+        // alone previously swallowed every level and left the waveform flat.
+        self.events.publish(
+            Some(self.session_id),
+            BackendEventKind::SelectionVoiceLevel(crate::events::SelectionVoiceRecordingLevel {
+                session_id: self.session_id.to_string(),
+                level,
+                elapsed_ms,
+            }),
+        );
         let decision = self
             .silence
             .lock()
@@ -3124,6 +3140,7 @@ impl OpenLessBackend {
                     session_id,
                     selection_voice: Arc::clone(&self.deps.services.selection_voice),
                     control,
+                    events: self.event_publisher(),
                     task_spawner: Arc::clone(&self.deps.task_spawner),
                     started_at,
                     silence: Mutex::new(silence),
@@ -8540,6 +8557,7 @@ mod tests {
             })
             .await
             .unwrap();
+        let mut events = backend.subscribe();
         let control = Arc::new(FakeRecordingControl::default());
         let capture = backend
             .start_selection_voice_capture(
@@ -8549,6 +8567,21 @@ mod tests {
             .await
             .unwrap();
         tokio::task::yield_now().await;
+
+        let levels: Vec<f32> = std::iter::from_fn(|| events.try_recv().ok())
+            .filter_map(|event| match event.kind {
+                BackendEventKind::SelectionVoiceLevel(level) => Some(level.level),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            levels.iter().any(|level| (*level - 0.1).abs() < f32::EPSILON),
+            "selection voice must publish voiced levels for the shared capsule meter: {levels:?}"
+        );
+        assert!(
+            levels.contains(&0.0),
+            "selection voice must publish quiet levels for the shared capsule meter: {levels:?}"
+        );
 
         assert_eq!(
             *control.requests.lock().unwrap(),
