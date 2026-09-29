@@ -2,9 +2,7 @@
 
 use std::sync::{Arc, Weak};
 
-use super::{
-    emit_capsule, schedule_capsule_idle, Coordinator, Inner, CAPSULE_AUTO_HIDE_DELAY_MS,
-};
+use super::{emit_capsule, schedule_capsule_idle, Coordinator, Inner, CAPSULE_AUTO_HIDE_DELAY_MS};
 use crate::coordinator_state::SessionId;
 use crate::selection::SelectionInsertionTarget;
 use crate::types::{CapsuleState, InsertStatus};
@@ -663,10 +661,9 @@ impl Coordinator {
             }
         }
         emit_capsule(&self.inner, CapsuleState::Polishing, 0.0, 0, None, None);
-        let result =
-            continue_selection_voice_disposition(&self.inner, disposition)
-                .await
-                .map(|_| ());
+        let result = continue_selection_voice_disposition(&self.inner, disposition)
+            .await
+            .map(|_| ());
         if let Err(error) = &result {
             let _ = self
                 .inner

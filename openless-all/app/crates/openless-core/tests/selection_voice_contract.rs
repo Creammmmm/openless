@@ -1014,7 +1014,8 @@ async fn confirm_intent_accepts_compose() {
     assert!(
         calls
             .iter()
-            .any(|call| call.system_prompt.contains("帮我写") || call.system_prompt.contains("Help me write")),
+            .any(|call| call.system_prompt.contains("帮我写")
+                || call.system_prompt.contains("Help me write")),
         "compose must use the compose system prompt, got: {:?}",
         calls.iter().map(|c| &c.system_prompt).collect::<Vec<_>>()
     );

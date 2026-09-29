@@ -948,7 +948,6 @@ impl TauriLocalAsrRuntimeAdapter {
             ))
         })
     }
-
 }
 
 #[derive(Clone)]
@@ -2515,17 +2514,21 @@ impl RecordingArchive for TauriRecordingArchive {
                 ));
             };
             let target = crate::persistence::quick_note_recordings_root()
-                .map_err(|error| BackendError::new(BackendErrorCode::Persistence, error.to_string()))?
+                .map_err(|error| {
+                    BackendError::new(BackendErrorCode::Persistence, error.to_string())
+                })?
                 .join(file_name);
             if current == target {
                 return Ok(());
             }
-            tokio::fs::rename(&current, &target).await.map_err(|error| {
-                BackendError::new(
-                    BackendErrorCode::Persistence,
-                    format!("promote quick-note recording archive: {error}"),
-                )
-            })?;
+            tokio::fs::rename(&current, &target)
+                .await
+                .map_err(|error| {
+                    BackendError::new(
+                        BackendErrorCode::Persistence,
+                        format!("promote quick-note recording archive: {error}"),
+                    )
+                })?;
             *path.lock() = target;
             Ok(())
         })
@@ -2542,17 +2545,21 @@ impl RecordingArchive for TauriRecordingArchive {
                 ));
             };
             let target = crate::persistence::recordings_root()
-                .map_err(|error| BackendError::new(BackendErrorCode::Persistence, error.to_string()))?
+                .map_err(|error| {
+                    BackendError::new(BackendErrorCode::Persistence, error.to_string())
+                })?
                 .join(file_name);
             if current == target {
                 return Ok(());
             }
-            tokio::fs::rename(&current, &target).await.map_err(|error| {
-                BackendError::new(
-                    BackendErrorCode::Persistence,
-                    format!("move recording archive to ordinary storage: {error}"),
-                )
-            })?;
+            tokio::fs::rename(&current, &target)
+                .await
+                .map_err(|error| {
+                    BackendError::new(
+                        BackendErrorCode::Persistence,
+                        format!("move recording archive to ordinary storage: {error}"),
+                    )
+                })?;
             *path.lock() = target;
             Ok(())
         })
@@ -2634,7 +2641,8 @@ impl AudioRecorder for TauriAudioRecorder {
             }
             let permanent_archive = matches!(
                 context.output_target,
-                openless_core::DictationOutputTarget::QuickNote | openless_core::DictationOutputTarget::Undecided
+                openless_core::DictationOutputTarget::QuickNote
+                    | openless_core::DictationOutputTarget::Undecided
             );
             // Undecided Android captures use the permanent quick-note spool
             // until the terminal tap/gesture classifies the session.

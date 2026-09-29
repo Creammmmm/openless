@@ -8468,10 +8468,7 @@ mod tests {
             .await
             .unwrap();
         let multimodal = backend
-            .start_selection_voice_capture(
-                multimodal_id,
-                Arc::new(FakeRecordingControl::default()),
-            )
+            .start_selection_voice_capture(multimodal_id, Arc::new(FakeRecordingControl::default()))
             .await
             .unwrap();
         // Multimodal finish needs Omni credentials; capture must not feed ASR.
@@ -8931,7 +8928,9 @@ mod tests {
             })
             .collect();
         assert!(
-            levels.iter().any(|level| (*level - 0.1).abs() < f32::EPSILON),
+            levels
+                .iter()
+                .any(|level| (*level - 0.1).abs() < f32::EPSILON),
             "selection voice must publish voiced levels for the shared capsule meter: {levels:?}"
         );
         assert!(
@@ -11562,10 +11561,7 @@ mod tests {
         let stamp = (chrono::Utc::now() - chrono::Duration::days(1))
             .with_nanosecond(0)
             .expect("truncate sub-second");
-        let fixed_clock = Arc::new(crate::testing::FixedClock::new(
-            stamp,
-            stamp.date_naive(),
-        ));
+        let fixed_clock = Arc::new(crate::testing::FixedClock::new(stamp, stamp.date_naive()));
         let backend = OpenLessBackend::new_with_clock(
             BackendConfig {
                 data_dir: data_dir.clone(),

@@ -342,7 +342,14 @@ fn backend(
 
 #[tokio::test]
 async fn qa_and_selection_voice_never_request_disk_archives() {
-    for entry in ["qa", "qa-omni", "selection", "selection-omni", "dictation", "less"] {
+    for entry in [
+        "qa",
+        "qa-omni",
+        "selection",
+        "selection-omni",
+        "dictation",
+        "less",
+    ] {
         let plans = Arc::new(Mutex::new(Vec::new()));
         let recorder = testing::FixtureAudioRecorder::new(vec![vec![0; 320]], Vec::new());
         let (backend, path) = backend(

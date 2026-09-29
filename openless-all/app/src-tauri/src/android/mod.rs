@@ -20,13 +20,13 @@ pub use accessibility::{
 };
 #[cfg(target_os = "android")]
 pub use insert::android_insert_with_strategy;
+#[cfg(target_os = "android")]
+pub use native_bridge::register_android_app_handle;
 pub use native_bridge::{
     hide_overlay, is_overlay_visible, notify_capsule_state, refresh_overlay_if_visible,
     refresh_overlay_layout, register_android_backend, register_android_coordinator,
     replace_overlay, show_overlay,
 };
-#[cfg(target_os = "android")]
-pub use native_bridge::register_android_app_handle;
 pub use overlay::{
     get_android_overlay_status, hide_android_overlay, refresh_android_overlay_if_visible,
     refresh_android_overlay_layout, replace_android_overlay, request_android_overlay_permission,

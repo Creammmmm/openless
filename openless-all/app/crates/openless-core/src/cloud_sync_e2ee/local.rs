@@ -97,12 +97,12 @@ impl LocalStorage {
     }
 
     pub(crate) async fn read_ui(&self) -> SyncResult<Option<UiEnvelope>> {
-        let value: Option<UiEnvelope> =
-            self.read("device", "sync-ui-preferences")
-                .await
-                .inspect_err(|error| {
-                    log_local_failure("ui_mirror_read", error);
-                })?;
+        let value: Option<UiEnvelope> = self
+            .read("device", "sync-ui-preferences")
+            .await
+            .inspect_err(|error| {
+                log_local_failure("ui_mirror_read", error);
+            })?;
         if let Some(value) = &value {
             if value.schema_version != 1
                 || crate::cloud_sync_e2ee_protocol::types::UuidV4::parse(&value.revision).is_err()
@@ -560,7 +560,10 @@ fn hard_link_unsupported(err: &std::io::Error) -> bool {
     matches!(
         err.kind(),
         std::io::ErrorKind::Unsupported | std::io::ErrorKind::PermissionDenied
-    ) || matches!(err.raw_os_error(), Some(1 /* EPERM */) | Some(95 /* EOPNOTSUPP/ENOTSUP */))
+    ) || matches!(
+        err.raw_os_error(),
+        Some(1 /* EPERM */) | Some(95 /* EOPNOTSUPP/ENOTSUP */)
+    )
 }
 
 fn exclusive_create(path: &Path, bytes: &[u8]) -> SyncResult<bool> {

@@ -68,6 +68,11 @@ mod insertion;
 mod llm_gemini;
 #[cfg(mobile)]
 mod mobile_runtime;
+#[cfg(not(mobile))]
+mod mouse_dictation;
+#[cfg(mobile)]
+#[path = "mobile_stubs/mouse_dictation.rs"]
+mod mouse_dictation;
 mod net;
 mod omni;
 mod permissions;
@@ -97,11 +102,6 @@ mod side_aware_combo;
 #[cfg(mobile)]
 #[path = "mobile_stubs/side_aware_combo.rs"]
 mod side_aware_combo;
-#[cfg(not(mobile))]
-mod mouse_dictation;
-#[cfg(mobile)]
-#[path = "mobile_stubs/mouse_dictation.rs"]
-mod mouse_dictation;
 mod tauri_events;
 mod types;
 #[cfg(not(mobile))]
@@ -2189,7 +2189,10 @@ fn floating_window_monitor_frame<R: tauri::Runtime>(
 
 /// First presentation may follow the pointer; resizing an existing chat stays
 /// on its own monitor. Work areas exclude the Dock/menu bar/taskbar.
-fn chat_window_work_area<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, initial: bool) -> tauri::Result<Option<(LogicalMonitorFrame, f64)>> {
+fn chat_window_work_area<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    initial: bool,
+) -> tauri::Result<Option<(LogicalMonitorFrame, f64)>> {
     #[cfg(target_os = "macos")]
     if initial {
         if let Some(target) = capsule_target_monitor(window) {
@@ -2198,10 +2201,21 @@ fn chat_window_work_area<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, in
     }
     #[cfg(not(target_os = "macos"))]
     let _ = initial;
-    let Some(monitor) = window.current_monitor()? else { return Ok(None); };
+    let Some(monitor) = window.current_monitor()? else {
+        return Ok(None);
+    };
     let area = monitor.work_area();
     let scale = monitor.scale_factor().max(0.1);
-    Ok(Some((logical_monitor_frame(area.position.x, area.position.y, area.size.width, area.size.height, scale), scale)))
+    Ok(Some((
+        logical_monitor_frame(
+            area.position.x,
+            area.position.y,
+            area.size.width,
+            area.size.height,
+            scale,
+        ),
+        scale,
+    )))
 }
 
 #[cfg(target_os = "macos")]
@@ -2502,29 +2516,67 @@ fn position_qa_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> ta
         QA_WINDOW_EXPANDED_HEIGHT,
         capsule_height + QA_WINDOW_GAP_TO_CAPSULE,
     );
-    window.set_position(tauri::PhysicalPosition::new((x * scale).round() as i32, (y * scale).round() as i32))?;
-    window.set_size(tauri::PhysicalSize::new((QA_WINDOW_WIDTH * scale).round() as u32, (QA_WINDOW_HEIGHT * scale).round() as u32))?;
+    window.set_position(tauri::PhysicalPosition::new(
+        (x * scale).round() as i32,
+        (y * scale).round() as i32,
+    ))?;
+    window.set_size(tauri::PhysicalSize::new(
+        (QA_WINDOW_WIDTH * scale).round() as u32,
+        (QA_WINDOW_HEIGHT * scale).round() as u32,
+    ))?;
     Ok(())
 }
 
 /// Called on the native main thread by the restricted QA command. The compact
 /// state has a genuinely small native frame, so hidden content cannot eat clicks.
-pub(crate) fn set_qa_window_expanded<R: tauri::Runtime>(app: &AppHandle<R>, expanded: bool) -> Result<(), String> {
-    let window = app.get_webview_window("qa").ok_or_else(|| "qa_window_unavailable".to_string())?;
+pub(crate) fn set_qa_window_expanded<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    expanded: bool,
+) -> Result<(), String> {
+    let window = app
+        .get_webview_window("qa")
+        .ok_or_else(|| "qa_window_unavailable".to_string())?;
     let area = chat_window_work_area(&window, false).map_err(|_| "qa_geometry_unavailable")?;
-    let scale = area.map(|(_, scale)| scale).unwrap_or(window.scale_factor().map_err(|_| "qa_geometry_unavailable")?);
-    let position = window.inner_position().map_err(|_| "qa_geometry_unavailable")?.to_logical::<f64>(scale);
+    let scale = area.map(|(_, scale)| scale).unwrap_or(
+        window
+            .scale_factor()
+            .map_err(|_| "qa_geometry_unavailable")?,
+    );
+    let position = window
+        .inner_position()
+        .map_err(|_| "qa_geometry_unavailable")?
+        .to_logical::<f64>(scale);
     let mut width = QA_WINDOW_WIDTH;
-    let mut height = if expanded { QA_WINDOW_EXPANDED_HEIGHT } else { QA_WINDOW_HEIGHT };
+    let mut height = if expanded {
+        QA_WINDOW_EXPANDED_HEIGHT
+    } else {
+        QA_WINDOW_HEIGHT
+    };
     let (mut x, mut y) = (position.x, position.y);
     if let Some((frame, _)) = area {
         width = width.min((frame.width - 32.0).max(240.0));
         height = height.min((frame.height - 64.0).max(QA_WINDOW_HEIGHT));
-        x = x.clamp(frame.x + 16.0, (frame.x + frame.width - width - 16.0).max(frame.x + 16.0));
-        y = y.clamp(frame.y + 32.0, (frame.y + frame.height - height - 16.0).max(frame.y + 32.0));
+        x = x.clamp(
+            frame.x + 16.0,
+            (frame.x + frame.width - width - 16.0).max(frame.x + 16.0),
+        );
+        y = y.clamp(
+            frame.y + 32.0,
+            (frame.y + frame.height - height - 16.0).max(frame.y + 32.0),
+        );
     }
-    window.set_position(tauri::PhysicalPosition::new((x * scale).round() as i32, (y * scale).round() as i32)).map_err(|_| "qa_position_failed")?;
-    window.set_size(tauri::PhysicalSize::new((width * scale).round() as u32, (height * scale).round() as u32)).map_err(|_| "qa_resize_failed")?;
+    window
+        .set_position(tauri::PhysicalPosition::new(
+            (x * scale).round() as i32,
+            (y * scale).round() as i32,
+        ))
+        .map_err(|_| "qa_position_failed")?;
+    window
+        .set_size(tauri::PhysicalSize::new(
+            (width * scale).round() as u32,
+            (height * scale).round() as u32,
+        ))
+        .map_err(|_| "qa_resize_failed")?;
     Ok(())
 }
 
@@ -2989,8 +3041,14 @@ fn position_less_computer_window<R: tauri::Runtime>(
     let height = LESS_COMPUTER_WINDOW_HEIGHT.min((frame.height - 32.0).max(520.0));
     let x = frame.x + (frame.width - width).max(0.0) / 2.0;
     let y = frame.y + (frame.height - height).max(0.0) / 2.0;
-    window.set_position(tauri::PhysicalPosition::new((x * scale).round() as i32, (y * scale).round() as i32))?;
-    window.set_size(tauri::PhysicalSize::new((width * scale).round() as u32, (height * scale).round() as u32))?;
+    window.set_position(tauri::PhysicalPosition::new(
+        (x * scale).round() as i32,
+        (y * scale).round() as i32,
+    ))?;
+    window.set_size(tauri::PhysicalSize::new(
+        (width * scale).round() as u32,
+        (height * scale).round() as u32,
+    ))?;
     Ok(())
 }
 

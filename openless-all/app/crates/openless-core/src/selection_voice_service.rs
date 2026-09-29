@@ -328,9 +328,10 @@ impl SelectionVoiceService {
                     .selection
                     .as_ref()
                     .ok_or_else(|| invalid_state("selection voice capture is unavailable"))?;
-                state.instruction_polished.clone().ok_or_else(|| {
-                    invalid_state("selection voice instruction is unavailable")
-                })?
+                state
+                    .instruction_polished
+                    .clone()
+                    .ok_or_else(|| invalid_state("selection voice instruction is unavailable"))?
             };
 
             let (text, summary) = service

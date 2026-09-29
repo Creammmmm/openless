@@ -56,13 +56,17 @@ pub(crate) fn build(
         super::error("local_storage_unavailable")
     })?;
     log::error!("[e2ee-adapter] stage=gate_open");
-    let gate = crate::cloud_sync_e2ee_store::gate::open_for_data_dir(data_dir).map_err(|error| {
-        log::error!("[e2ee-adapter] reopen sync write gate failed: {error:#}");
-        document_error(error)
-    })?;
+    let gate =
+        crate::cloud_sync_e2ee_store::gate::open_for_data_dir(data_dir).map_err(|error| {
+            log::error!("[e2ee-adapter] reopen sync write gate failed: {error:#}");
+            document_error(error)
+        })?;
     log::error!("[e2ee-adapter] stage=device_id");
     let device_id = load_device_id(&root)?;
-    log::error!("[e2ee-adapter] stage=device_id_ok id_len={}", device_id.len());
+    log::error!(
+        "[e2ee-adapter] stage=device_id_ok id_len={}",
+        device_id.len()
+    );
     let device = SourceDevice {
         id: device_id.clone(),
         os: std::env::consts::OS.into(),

@@ -117,13 +117,10 @@ mod tests {
 
         let credential_store: Arc<dyn CredentialStore> = store;
         for stale_preference in ["foundry-local-whisper", "volcengine"] {
-            let resolved = resolve_session_provider(
-                &credential_store,
-                ProviderSlot::Asr,
-                stale_preference,
-            )
-            .await
-            .unwrap();
+            let resolved =
+                resolve_session_provider(&credential_store, ProviderSlot::Asr, stale_preference)
+                    .await
+                    .unwrap();
             assert_eq!(resolved.provider_id, "volcengine-2");
             assert_eq!(resolved.provider_type, "volcengine");
         }
@@ -133,10 +130,9 @@ mod tests {
     async fn empty_asr_selection_uses_legacy_preference_fallback() {
         let credential_store: Arc<dyn CredentialStore> =
             Arc::new(InMemoryCredentialStore::default());
-        let resolved =
-            resolve_session_provider(&credential_store, ProviderSlot::Asr, "volcengine")
-                .await
-                .unwrap();
+        let resolved = resolve_session_provider(&credential_store, ProviderSlot::Asr, "volcengine")
+            .await
+            .unwrap();
         assert_eq!(resolved.provider_id, "volcengine");
         assert_eq!(resolved.provider_type, "volcengine");
     }

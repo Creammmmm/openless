@@ -1025,8 +1025,17 @@ pub trait QaApi: Send + Sync {
     }
     fn submit_text(&self, text: String) -> BoxFuture<'static, Result<(), BackendError>>;
     /// Check the displayed conversation and claim the new turn atomically.
-    fn submit_text_in_context(&self, _text: String, _expected_session: Option<SessionId>) -> BoxFuture<'static, Result<(), BackendError>> {
-        Box::pin(async { Err(BackendError::new(BackendErrorCode::Unsupported, "scoped QA submission is unavailable")) })
+    fn submit_text_in_context(
+        &self,
+        _text: String,
+        _expected_session: Option<SessionId>,
+    ) -> BoxFuture<'static, Result<(), BackendError>> {
+        Box::pin(async {
+            Err(BackendError::new(
+                BackendErrorCode::Unsupported,
+                "scoped QA submission is unavailable",
+            ))
+        })
     }
     fn submit_captured_text(
         &self,
