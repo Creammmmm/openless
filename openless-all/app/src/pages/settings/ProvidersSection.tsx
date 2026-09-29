@@ -142,6 +142,7 @@ export const LLM_LABELS = [
   ['cometapi', 'cometapi'],
   ['openrouterFree', 'openrouterFree'],
   ['requesty', 'requesty'],
+  ['api-route', 'apiRoute'],
   ['orcarouter', 'orcarouter'],
   ['alibabaCoding', 'alibabaCoding'],
   ['codingPlanX', 'codingPlanX'],
