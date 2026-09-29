@@ -635,7 +635,7 @@ fn run_desktop() {
     #[cfg(not(target_os = "windows"))]
     let coordinator = Arc::new(coordinator::Coordinator::new());
     let core_backend = coordinator.backend();
-    // Runtime effects and active-provider mirroring follow Core startup/recovery
+    // Runtime effects follow Core startup/recovery
     // in tauri_events::start; pending restore must not mutate the old vault here.
     let builder = tauri::Builder::default();
     // macOS: the capsule must overlay other apps' fullscreen Spaces, which requires a

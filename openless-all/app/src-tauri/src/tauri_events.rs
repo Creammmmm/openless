@@ -64,13 +64,6 @@ pub fn start(app: AppHandle, backend: Arc<OpenLessBackend>) {
             return;
         }
         let preferences = backend.get_preferences();
-        if !preferences.active_asr_provider.is_empty() {
-            if let Err(error) =
-                crate::commands::sync_active_asr_provider_to_vault(&preferences.active_asr_provider)
-            {
-                log::warn!("[startup] active ASR provider mirror failed: {error}");
-            }
-        }
         #[cfg(target_os = "windows")]
         {
             let target = openless_core::WindowsKeyboardRuntimeTarget::from(&preferences);
