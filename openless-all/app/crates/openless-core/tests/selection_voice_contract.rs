@@ -1187,4 +1187,3 @@ async fn strong_compose_cue_wins_even_when_phrased_as_question() {
     voice.cancel(Some(session_id)).await.unwrap();
     let _ = std::fs::remove_dir_all(data_dir);
 }
-

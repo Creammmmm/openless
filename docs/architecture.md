@@ -1,6 +1,6 @@
 # OpenLess 2.0 架构
 
-状态：canonical，当前实现说明；更新：2026-09-23。平台范围见 [2.0 需求](2.0-requirements.md)，文件定位见 [目录结构](structure.md)。
+状态：canonical，当前实现说明；更新：2026-09-29。平台范围见 [2.0 需求](2.0-requirements.md)，文件定位见 [目录结构](structure.md)。
 
 ## 1. 分层与工作区
 
@@ -45,6 +45,10 @@ flowchart TB
 
 Android 悬浮窗在录音中转入追问时，Host 先捕获原选区，Core 的 `stop_dictation_for_qa` 按原会话 ID 完成转写并释放听写资源，跳过听写润色与文字插入，再由 `QaApi::submit_captured_text` 接收已录问题和选区。重复手势由 Host 的异步锁合并；QA 不重新抓取已经变化的前台选区。
 
+Android IME 通过 `InputConnection` 插入文字；笔画、英文候选与轻量拼音由原生 Kotlin 控制器处理。`OpenLessApplication`、`OpenLessRuntimeService` 和 Warmup Activity 管理后台运行与恢复。用户操作与验收入口见 [Android 输入法](android-ime.md)。
+
+设置保存使用 `get_settings_snapshot` / `update_setting_fields`：前端只提交字段差异，Core 按偏好修订号提交事务并在版本冲突时重试；`prefs:changed` 使前端重新读取快照。`preferencesWriteGate.ts` 将尚未完成的本地编辑叠加到已确认快照，失败时只撤回对应请求。
+
 ## 3. Core 模块地图（按域，见 `src/lib.rs` pub mod 清单）
 
 - 听写链路：`dictation_engine` / `dictation_context` / `audio` / `external_audio` / `silence_auto_stop` / `streaming_insert` / `hotkey_interpreter` / `voice_session`
@@ -76,6 +80,10 @@ Siri、Classic、Typeless 三种胶囊共用 Core 的 `CapsuleStyle`，窗口尺
 Less Computer 面板将听写与直接语音提交分开：麦克风把转写填入草稿供编辑，语音模式和快捷键可直接提交给 Agent。Core 的 `voice_state` 事件携带会话 ID、模式、实时转写及收尾结果；波形使用实际音量采样。停止和取消均绑定指定会话，延迟请求不能结束下一段录音；开麦与文字发送互斥。工具过程默认折叠，运行状态只在真实活动步骤显示动效，右侧工作台汇总当前轮次；历史和多会话仍标为暂不可用。登录弹窗打开时，听写结果只更新草稿，不抢走弹窗或授权浏览器的焦点。
 
 选区直接润色在捕获文字和原输入目标后显示处理中提示，重复快捷键的 Busy 返回不覆盖该提示。已有语音选区入口在松开快捷键后继续显示思考动画，直到处理/替换完成，或交给确认和预览面板。录音提示音的 Web Audio context 在恢复超时或音频时钟冻结时丢弃并最多重试一次，重试沿用原请求的取消和迟到边界。
+
+Selection Voice 在有效输入目标中允许空选区：Core 将无草稿编辑转换为 Compose，生成正文后沿用预览/直接插入路径；已有选区仍按编辑或问答处理。Host 的胶囊所有权与会话 ID 绑定，结束录音后停止接收音量帧，终态通过 Done/Idle 收尾。Selection Voice 和 Less Computer 的辅助录音遵循当前多模态偏好；Omni 将音频转换为指令文字，后续意图、编辑与 Agent 调用仍由各自模型完成。
+
+AI 服务设置在顶部选择传统或多模态模式，语言模型、语音识别和多模态配置页始终可查看，未参与当前听写模式的配置明确标记为未启用。切换模式保留两组渠道和凭据。Omni 连接测试只验证文本请求，实际音频可用性需录音验证；DashScope 音频使用 `data:;base64,` 和独立 `format` 字段。API Route 作为可手动添加的 OpenAI 兼容润色渠道，不改变默认提供方。
 
 界面启动等待所选语言资源就绪；语言选择持久化到 `ol.locale`，其他 WebView 通过存储事件同步，日期、数字和默认风格展示随语言变化。用户修改的风格名称、说明和内容保持原文。旧版两种强制排版字段只保留数据兼容，界面清除其布局效果，窄屏改由响应式布局处理。
 

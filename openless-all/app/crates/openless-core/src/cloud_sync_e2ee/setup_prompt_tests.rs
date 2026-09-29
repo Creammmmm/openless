@@ -283,4 +283,3 @@ async fn setup_prompt_service_busy_is_false_and_concurrent_claims_do_not_duplica
     assert!(first.await.unwrap().unwrap());
     assert_eq!(server.state.lock().unwrap().requests, 0);
 }
-
