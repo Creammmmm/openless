@@ -241,13 +241,9 @@ impl GeminiProvider {
             .await
     }
 
-    /// Gemini channel of the multimodal (Omni) pipeline (issue #902): audio
-    /// + prompt in one call. With `wav_bytes` = Some, appends
-    /// `inlineData(audio/wav)` to the user parts (already-encoded WAV file
-    /// bytes; PCM→WAV conversion happens in the omni layer). With `None`,
-    /// degrades to a plain text call (text pipelines like selection polish /
-    /// history re-polish share this channel; it reads the omni credential
-    /// namespace, isolated from the traditional LLM config).
+    /// Gemini Omni call with optional WAV audio in an `inlineData` part.
+    /// The Omni layer encodes PCM to WAV; absent audio uses a text-only request.
+    /// Both paths use the independent Omni credential namespace.
     pub(crate) async fn complete_omni(
         &self,
         system_prompt: &str,

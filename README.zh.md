@@ -221,7 +221,7 @@ OpenLess 只做一件事:**把语音变成可用的书面文字(尤其是 AI 提
 - **本地模型管理**——在设置中管理本地 ASR 模型在磁盘上的存储。
 - **多语言界面**——设置 → 语言 可在 简体中文 / 繁體中文 / English / 日本語 / 한국어 之间切换(首次启动自动检测)。
 - **Tauri 宿主内自动更新**——macOS、Windows 与 Android 通过 设置 → 关于 → 检查 获取签名产物；Linux deb/rpm 不提供应用内更新或 AppImage 更新清单。
-- **Beta 频道(可选加入)**——设置 → 关于 → 加入 Beta 频道,可下载最新预发布版本进行手动安装。Beta 版本绝不会自动推送给 Stable 用户(见[贡献流程](#贡献流程))。
+- **Beta 频道(可选加入)**——设置 → 关于与更新 → 加入 Beta 频道,切换至 Beta 更新源；也可在 Releases 下载安装包。Beta 版本绝不会自动推送给 Stable 用户(见[贡献流程](#贡献流程))。
 - **分发渠道**——从 [Releases](https://github.com/Open-Less/openless/releases) 直接下载 DMG/EXE、Homebrew Cask(须先添加项目 tap，见下方安装步骤)、Windows 安装包。Linux deb/rpm 在真机验收、管理员创建发版 tag 后附到共用 Release。
 - **单实例锁**——防止两个 OpenLess 进程争抢同一个快捷键边沿。
 - 词典条目注入到支持热词的 ASR 提供方(Volcengine 的 `context.hotwords`、StepFun 的 `hotwords`、Whisper 兼容的 `prompt`(ZenMux 除外——其 JSON 协议不携带 `prompt`/`hotwords`)、百炼的 vocabulary_id),并在润色时作为语义提示;命中次数按会话累计。讯飞实时语音转写标准版没有请求级热词参数,需在讯飞控制台配置个性化热词。
@@ -422,38 +422,7 @@ egui UI  ── Linux Adapter（无 Tauri/WebKitGTK）───┘
 
 ## 维护者发布清单
 
-OpenLess 提供两个发布频道。分支名即频道名(见[贡献流程](#贡献流程))。
-
-### 通用准备(两个频道)
-
-- 在 Tauri 应用的**全部五个**位置提升版本号:`package.json`、`package-lock.json`(根级 + `packages.""` 下的嵌套条目)、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`,以及 `src-tauri/Cargo.lock`(查找 `name = "openless"` 块)。否则 CI 的 `Verify version sync` 步骤会使构建失败。根 `Cargo.lock` 只属于 `openless-core` 与 `openless-linux-egui`。
-- 运行 `INSTALL=0 ./scripts/build-mac.sh`,确认 `.app` 能启动。
-- 在干净的机器上做冒烟测试:权限流程、快捷键、录音、ASR、润色、插入,以及剪贴板回退。
-- 确认 `TAURI_SIGNING_PRIVATE_KEY` 以及(macOS 所需的)Apple 签名 / 公证密钥已在仓库中配置。
-- Android tag 发版还需配置:`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`（release APK 签名；minisign 仍用 `TAURI_SIGNING_PRIVATE_KEY`）。
-
-### Beta 频道 — `v<v>-beta-tauri`
-
-1. 通过 PR 评审把改动落到 `beta` 分支。
-2. **在 `beta` 上**推送标签:`git tag v<v>-beta-tauri && git push origin v<v>-beta-tauri`。
-3. CI 会把该 GitHub Release 标记为 `Pre-release`,并上传 `latest-{tgt}-{arch}-beta.json` 与 `latest-android-{arch}-beta.json` 更新清单。Stable 用户的 `releases/latest` 跳转不受影响。
-4. 在合适的渠道(issue 讨论串、QQ 群)公告:可选加入的 Beta 用户可从 设置 → 关于 → 加入 Beta 频道 获取。
-
-### Stable 频道 — `v<v>-tauri`
-
-1. 在 Beta 发布充分沉淀后,将 `beta → main` 合并(或直接运行一次最终的双平台冒烟构建)。
-2. **在 `main` 上**推送标签:`git tag v<v>-tauri && git push origin v<v>-tauri`。
-3. CI 发布一个正常的 GitHub Release,并上传 `latest-{tgt}-{arch}.json` 与 `latest-android-{arch}.json`(无 `-beta` 后缀)。所有 Stable 用户都会通过应用内更新器获得更新。
-
-### 发布后验证(始终执行)
-
-按 [RELEASING.md](RELEASING.md) 验证发布页的 pre-release 标记、产物文件名与渠道、Stable 用户流程、Beta 选择流程和更新端点，并额外核对 Android：
-
-1. Release 页面含 `latest-android-aarch64.json`（Stable 无 `-beta` 后缀混用）。
-2. Beta pre-release 含 `latest-android-aarch64-beta.json`,URL 指向具体 tag。
-3. 真机:设置 → 关于 → 检查更新 → 下载 → 系统安装器 → 版本号递增。
-4. Beta 开关:高级 → 加入 Beta → 手动/自动检查 Beta manifest。
-5. 原始端点与 mirror 端点均可访问。
+[RELEASING.md](RELEASING.md) 统一维护管理员权限、版本同步、平台验收、草稿资产、签名和更新清单校验。新 Beta 标签使用 `v<X.Y.Z>-Beta.<N>-tauri`，历史 `-beta-tauri` 后缀仅作兼容。
 
 ## 致谢
 

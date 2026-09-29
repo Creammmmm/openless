@@ -214,7 +214,7 @@ Every item below is one more layer sedimented into a default — a capability yo
 - **Local model management** — manage on-disk local-ASR model storage from Settings.
 - **Multilingual UI** — Settings → Language switches between 简体中文 / 繁體中文 / English / 日本語 / 한국어 (auto-detected on first launch).
 - **In-app auto-update on the Tauri hosts** — Settings → About → Check; signed updater artifacts via the Tauri updater plugin on macOS, Windows, and Android. Linux deb/rpm packages have no in-app updater or AppImage manifest.
-- **Beta channel (opt-in)** — Settings → About → Join Beta channel exposes the latest pre-release build for manual download. Beta releases never reach Stable users automatically (see [Contributing workflow](#contributing-workflow)).
+- **Beta channel (opt-in)** — Settings → About & updates → Join Beta channel selects the Beta updater feed; packages are also available from Releases. Beta releases never reach Stable users automatically (see [Contributing workflow](#contributing-workflow)).
 - **Distribution channels** — direct DMG/EXE from [Releases](https://github.com/Open-Less/openless/releases), Homebrew Cask (add the project tap first; see installation below), and a Windows installer. Linux deb/rpm packages attach to the shared Release only after device acceptance and an admin's release tag.
 - **Single-instance lock** — prevents two OpenLess processes from racing the same hotkey edge.
 - Dictionary entries are injected as Volcengine ASR `context.hotwords` and as semantic hints during polish; hits accumulate per session.
@@ -415,31 +415,7 @@ Planned but not yet shipped:
 
 ## Maintainer release checklist
 
-OpenLess ships two release channels. The branch name equals the channel name (see [Contributing workflow](#contributing-workflow)).
-
-### Common prep (both channels)
-
-- Bump the Tauri application version in **all five** locations: `package.json`, `package-lock.json` (root + nested entry under `packages.""`), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` (look for the `name = "openless"` block). CI's `Verify version sync` step will otherwise fail the build. The root `Cargo.lock` belongs only to `openless-core` and `openless-linux-egui`.
-- Run `INSTALL=0 ./scripts/build-mac.sh` and confirm the `.app` launches.
-- Smoke-test on a clean machine: permission flow, hotkey, recording, ASR, polish, insertion, and clipboard fallback.
-- Confirm that `TAURI_SIGNING_PRIVATE_KEY` and (for macOS) the Apple signing/notarization secrets are set on the repo.
-
-### Beta channel — `v<v>-beta-tauri`
-
-1. Land changes onto the `beta` branch via PR review.
-2. Push the tag **on `beta`**: `git tag v<v>-beta-tauri && git push origin v<v>-beta-tauri`.
-3. CI tags the GitHub Release as `Pre-release` and uploads only `latest-{tgt}-{arch}-beta.json` updater manifests. The Stable users' `releases/latest` redirect is unaffected.
-4. Announce in the appropriate channel (issue thread, QQ group) that opt-in Beta users can grab it from Settings → About → Join Beta channel.
-
-### Stable channel — `v<v>-tauri`
-
-1. Merge `beta → main` after the Beta release has soaked sufficiently (or run a final two-platform smoke build directly).
-2. Push the tag **on `main`**: `git tag v<v>-tauri && git push origin v<v>-tauri`.
-3. CI publishes a normal GitHub Release and uploads `latest-{tgt}-{arch}.json` (no `-beta` suffix). All Stable users receive the update through the in-app updater.
-
-### Post-release verification (always run)
-
-Follow [RELEASING.md](RELEASING.md) and verify the release page's pre-release flag, asset-filename channel correctness, Stable user flow, Beta opt-in flow, and raw update endpoints.
+[RELEASING.md](RELEASING.md) is the canonical release procedure, including administrator authority, version synchronization, platform acceptance, draft assets, signing, and updater verification. New Beta tags use `v<X.Y.Z>-Beta.<N>-tauri`; the historical `-beta-tauri` suffix is compatibility-only.
 
 ## Acknowledgements
 

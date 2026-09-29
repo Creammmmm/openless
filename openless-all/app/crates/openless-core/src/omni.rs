@@ -1,10 +1,7 @@
 //! Model channel of the multimodal (Omni) recognition pipeline (issue #902).
 //!
-//! Unlike the `polish.rs` LLM clients, this takes "system prompt + user text
-//! + optional audio" and lets the model produce final text in one step from
-//! audio + dictionary/prompt, replacing the two-stage "ASR transcript + LLM
-//! polish" pipeline. Credentials read from a separate `omni` namespace,
-//! fully isolated from the asr/llm configs.
+//! Produces text from a system prompt, user text, and optional audio in one call.
+//! Credentials use the independent `omni` namespace.
 //!
 //! Channels:
 //! - OpenAI-compatible chat completions: the user content carries base64 WAV
