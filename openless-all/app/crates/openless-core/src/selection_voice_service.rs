@@ -383,6 +383,10 @@ impl SelectionVoiceWorkflow {
                 "selection voice model runtime is not configured",
             )
         })?;
+        // #1119 product B: first-stage instruction text may already come from Omni
+        // (audio→text in VoiceTranscriptionSession). Intent classification and
+        // EditPlan still use this traditional LLM polisher; SharedAuxiliaryTextPolisher
+        // is intentionally not required for correctness of capture alignment.
         let llm = crate::provider_resolution::resolve_session_provider(
             &self.credential_store,
             ProviderSlot::Llm,
@@ -669,6 +673,13 @@ impl SelectionVoicePersistence {
             SelectionVoiceApplyOutcome::Failed => return,
         };
         let final_chars = ticket.replacement_text.chars().count() as u64;
+        let pipeline_mode = match crate::shared_types::effective_pipeline_mode(
+            preferences.multimodal_pipeline_enabled,
+            preferences.pipeline_mode,
+        ) {
+            crate::shared_types::PipelineMode::Traditional => "traditional",
+            crate::shared_types::PipelineMode::Multimodal => "multimodal",
+        };
         let session = DictationSession {
             id: ticket.session_id.to_string(),
             created_at: self.clock.now_utc().to_rfc3339(),
@@ -691,7 +702,7 @@ impl SelectionVoicePersistence {
             asr_model: None,
             llm_provider: None,
             llm_model: None,
-            pipeline_mode: None,
+            pipeline_mode: Some(pipeline_mode.to_string()),
             asr_ms: None,
             polish_ms: None,
         };

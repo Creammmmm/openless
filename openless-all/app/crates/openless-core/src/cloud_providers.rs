@@ -1710,6 +1710,27 @@ pub async fn validate_shared_omni_provider(
     Ok(())
 }
 
+/// First-stage Omni for Selection Voice / Less Computer (#1119 product B):
+/// audio + prompt → instruction/command text. Downstream intent / EditPlan /
+/// Agent submit still use their existing LLM (or Agent) paths.
+///
+/// Empty Omni output is returned as `Ok("")` so callers can apply product
+/// policy (e.g. Less Computer Dictate → `Empty` outcome without a chat error;
+/// Selection Voice / Agent still treat emptiness as a provider failure).
+pub(crate) async fn complete_omni_instruction_from_wav(
+    credentials: &dyn CredentialStore,
+    context: &DictationContext,
+    wav_bytes: &[u8],
+    system_prompt: &str,
+) -> Result<String, BackendError> {
+    let provider = build_omni_provider(credentials, context).await?;
+    let result = provider
+        .complete(system_prompt, "", Some(wav_bytes))
+        .await
+        .map_err(map_omni_error)?;
+    Ok(result.trim().to_string())
+}
+
 fn cancelled_omni_error() -> BackendError {
     BackendError::new(BackendErrorCode::Cancelled, "Omni request cancelled")
 }

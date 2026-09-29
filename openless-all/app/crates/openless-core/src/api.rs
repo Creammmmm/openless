@@ -11,7 +11,7 @@ use crate::config::{BackendConfig, BackendDependencies, Clock, SystemClock, Task
 use crate::correction::apply_correction_rules;
 use crate::credentials::{
     ChannelKind, ChannelMutation, ChannelMutationResult, ChannelSummary, CredentialKey,
-    ProviderSlot, SecretValue,
+    CredentialStore, ProviderSlot, SecretValue,
 };
 use crate::dictation_context::{
     DictationAudioSource, DictationContext, DictationOutputTarget, DictationProviderInvocations,
@@ -108,7 +108,10 @@ pub struct DictationHotkeyDispatchOptions {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DictationContextPurpose {
     Dictation,
-    AsrOnly,
+    /// Selection Voice + Less Computer: respect `effective_pipeline_mode`, but
+    /// skip resolving an unused LLM at capture time (intent/EditPlan/Agent run
+    /// later). Replaces the old `AsrOnly` force-Traditional gate (#1119 B).
+    AuxiliaryVoice,
     QaText,
     QaVoice,
 }
@@ -166,11 +169,24 @@ pub enum LessComputerVoiceFinish {
 
 pub struct VoiceTranscriptionSession {
     session_id: SessionId,
-    transcription: Arc<dyn TranscriptionSession>,
+    /// Traditional ASR session. Absent when multimodal Omni will produce text.
+    transcription: Option<Arc<dyn TranscriptionSession>>,
+    /// Multimodal PCM buffer filled by `start_audio_capture` (or host feed).
+    pcm: Option<Arc<CapturedPcm>>,
+    /// Credentials + context + prompt for Omni finish. Present with `pcm`.
+    omni: Option<AuxiliaryOmniFinish>,
     recording: Mutex<Option<Box<dyn crate::ports::ActiveRecording>>>,
     partials: Arc<VoiceTranscriptSink>,
     lifecycle: Arc<VoiceCaptureLifecycle>,
     task_spawner: Arc<dyn TaskSpawner>,
+}
+
+/// Shared Omni finish inputs for Selection Voice / Less Computer multimodal.
+#[derive(Clone)]
+struct AuxiliaryOmniFinish {
+    credentials: Arc<dyn CredentialStore>,
+    context: Arc<DictationContext>,
+    system_prompt: String,
 }
 
 pub struct QaVoiceCaptureSession {
@@ -663,7 +679,9 @@ struct VoiceTranscriptSink {
 }
 
 struct VoiceCaptureControl {
-    transcription: Arc<dyn TranscriptionSession>,
+    transcription: Option<Arc<dyn TranscriptionSession>>,
+    pcm: Option<Arc<CapturedPcm>>,
+    omni: Option<AuxiliaryOmniFinish>,
     recording: Mutex<Option<Box<dyn crate::ports::ActiveRecording>>>,
     closed: std::sync::atomic::AtomicBool,
     resources: Mutex<Option<Arc<crate::voice_session::VoiceResourceHold>>>,
@@ -959,7 +977,10 @@ impl VoiceCaptureControl {
                     Some(recording) => recording.stop().await,
                     None => Ok(()),
                 };
-                let transcription = control.transcription.cancel().await;
+                let transcription = match control.transcription.as_ref() {
+                    Some(transcription) => transcription.cancel().await,
+                    None => Ok(()),
+                };
                 control
                     .feedback
                     .lock()
@@ -1079,7 +1100,12 @@ impl LessComputerVoiceSession {
                 "Less Computer PCM must be non-empty and contain complete 16-bit samples",
             ));
         }
-        self.control.transcription.consume_pcm_chunk(pcm);
+        if let Some(transcription) = self.control.transcription.as_ref() {
+            transcription.consume_pcm_chunk(pcm);
+        }
+        if let Some(buffer) = self.control.pcm.as_ref() {
+            buffer.consume_pcm_chunk(pcm);
+        }
         Ok(())
     }
 
@@ -1138,7 +1164,9 @@ impl LessComputerVoiceSession {
         }
         let control = Arc::clone(&self.control);
         let controls = Arc::clone(&self.controls);
-        let transcription = Arc::clone(&control.transcription);
+        let transcription = control.transcription.clone();
+        let pcm = control.pcm.clone();
+        let omni = control.omni.clone();
         let recording = control.take_recording();
         let archive = recording.as_ref().and_then(|recording| recording.archive());
         let archive_successful_recording = self.archive_successful_recording;
@@ -1178,7 +1206,9 @@ impl LessComputerVoiceSession {
                     if let Some(recording) = recording {
                         let _ = recording.stop().await;
                     }
-                    let _ = transcription.cancel().await;
+                    if let Some(transcription) = transcription.as_ref() {
+                        let _ = transcription.cancel().await;
+                    }
                     let _ = less_computer.abort_capture(session_id);
                     return Err(BackendError::new(
                         BackendErrorCode::Cancelled,
@@ -1187,7 +1217,9 @@ impl LessComputerVoiceSession {
                 }
                 if let Some(recording) = recording {
                     if let Err(error) = recording.stop().await {
-                        let _ = transcription.cancel().await;
+                        if let Some(transcription) = transcription.as_ref() {
+                            let _ = transcription.cancel().await;
+                        }
                         return Err(fail_less_voice_finish(
                             &less_computer,
                             session_id,
@@ -1198,23 +1230,75 @@ impl LessComputerVoiceSession {
                         .await);
                     }
                 }
-                let transcript = match transcription.finish().await {
-                    Ok(output) => output.text,
-                    Err(error) => {
-                        let _ = transcription.cancel().await;
+                let transcript = match (&transcription, &pcm, &omni) {
+                    (Some(transcription), _, _) => match transcription.finish().await {
+                        Ok(output) => output.text,
+                        Err(error) => {
+                            let _ = transcription.cancel().await;
+                            return Err(fail_less_voice_finish(
+                                &less_computer,
+                                session_id,
+                                &feedback,
+                                mode,
+                                error,
+                            )
+                            .await);
+                        }
+                    },
+                    (None, Some(pcm), Some(omni)) => {
+                        let wav = match crate::audio::encode_dictation_wav(&pcm.snapshot()) {
+                            Ok(wav) => wav,
+                            Err(error) => {
+                                return Err(fail_less_voice_finish(
+                                    &less_computer,
+                                    session_id,
+                                    &feedback,
+                                    mode,
+                                    error,
+                                )
+                                .await);
+                            }
+                        };
+                        match crate::cloud_providers::complete_omni_instruction_from_wav(
+                            omni.credentials.as_ref(),
+                            omni.context.as_ref(),
+                            &wav,
+                            &omni.system_prompt,
+                        )
+                        .await
+                        {
+                            Ok(text) => text,
+                            Err(error) => {
+                                return Err(fail_less_voice_finish(
+                                    &less_computer,
+                                    session_id,
+                                    &feedback,
+                                    mode,
+                                    error,
+                                )
+                                .await);
+                            }
+                        }
+                    }
+                    _ => {
                         return Err(fail_less_voice_finish(
                             &less_computer,
                             session_id,
                             &feedback,
                             mode,
-                            error,
+                            BackendError::new(
+                                BackendErrorCode::Internal,
+                                "Less Computer voice capture has an invalid pipeline shape",
+                            ),
                         )
                         .await);
                     }
                 };
                 if less_computer.capture_cancelled(session_id) {
                     feedback.settle(LessComputerVoiceOutcome::Cancelled, None);
-                    let _ = transcription.cancel().await;
+                    if let Some(transcription) = transcription.as_ref() {
+                        let _ = transcription.cancel().await;
+                    }
                     let _ = less_computer.abort_capture(session_id);
                     return Err(BackendError::new(
                         BackendErrorCode::Cancelled,
@@ -1359,7 +1443,9 @@ impl VoiceTranscriptionSession {
             .lock()
             .expect("voice transcription recording lock poisoned")
             .take();
-        let transcription = Arc::clone(&self.transcription);
+        let transcription = self.transcription.clone();
+        let pcm = self.pcm.clone();
+        let omni = self.omni.clone();
         let partials = Arc::clone(&self.partials);
         let lifecycle = Arc::clone(&self.lifecycle);
         let resources = lifecycle.resources();
@@ -1374,7 +1460,29 @@ impl VoiceTranscriptionSession {
                     if lifecycle.is_cancelled() {
                         return Err(VoiceCaptureLifecycle::cancelled_error());
                     }
-                    let transcript = transcription.finish().await?.text.trim().to_string();
+                    let transcript = match (&transcription, &pcm, &omni) {
+                        (Some(transcription), _, _) => {
+                            transcription.finish().await?.text.trim().to_string()
+                        }
+                        (None, Some(pcm), Some(omni)) => {
+                            // #1119 B: multimodal first stage — Omni audio→instruction text.
+                            // Host keeps finish() -> String so selection_voice_session stays thin.
+                            let wav = crate::audio::encode_dictation_wav(&pcm.snapshot())?;
+                            crate::cloud_providers::complete_omni_instruction_from_wav(
+                                omni.credentials.as_ref(),
+                                omni.context.as_ref(),
+                                &wav,
+                                &omni.system_prompt,
+                            )
+                            .await?
+                        }
+                        _ => {
+                            return Err(BackendError::new(
+                                BackendErrorCode::Internal,
+                                "voice transcription capture has an invalid pipeline shape",
+                            ));
+                        }
+                    };
                     if transcript.is_empty() {
                         return Err(BackendError::new(
                             BackendErrorCode::Provider,
@@ -1386,7 +1494,9 @@ impl VoiceTranscriptionSession {
                 .await;
                 let (result, cancel_provider) = lifecycle.settle(result);
                 if cancel_provider {
-                    let _ = transcription.cancel().await;
+                    if let Some(transcription) = transcription.as_ref() {
+                        let _ = transcription.cancel().await;
+                    }
                 }
                 lifecycle.release_resources();
                 let transcript = result?;
@@ -1405,7 +1515,7 @@ impl VoiceTranscriptionSession {
             .lock()
             .expect("voice transcription recording lock poisoned")
             .take();
-        let transcription = Arc::clone(&self.transcription);
+        let transcription = self.transcription.clone();
         let lifecycle = Arc::clone(&self.lifecycle);
         let resources = lifecycle.resources();
         own_voice_effect(
@@ -1419,7 +1529,12 @@ impl VoiceTranscriptionSession {
                             None => Ok(()),
                         }
                     },
-                    transcription.cancel(),
+                    async move {
+                        match transcription {
+                            Some(transcription) => transcription.cancel().await,
+                            None => Ok(()),
+                        }
+                    },
                 )
                 .await;
                 lifecycle.release_resources();
@@ -2928,7 +3043,7 @@ impl OpenLessBackend {
             let context = match self
                 .capture_dictation_context(
                     &DictationStartOptions::default(),
-                    DictationContextPurpose::AsrOnly,
+                    DictationContextPurpose::AuxiliaryVoice,
                 )
                 .await
             {
@@ -2960,48 +3075,102 @@ impl OpenLessBackend {
                 })),
                 feedback: Arc::clone(&feedback),
             });
-            let voice_capture = own_voice_start(
-                &self.deps.task_spawner,
-                Arc::clone(&resources),
-                self.deps.dictation_engine.start_voice_capture(
-                    session_id,
-                    Arc::clone(&context),
-                    Arc::clone(&partials) as Arc<dyn TextStreamSink>,
-                    Arc::clone(&recording_progress) as Arc<dyn crate::ports::RecordingProgressSink>,
-                    resources.cancel.clone(),
-                ),
-                discard_voice_capture,
-            )
-            .await;
-            let (transcription, recording) = match voice_capture {
-                Ok(capture) => (capture.transcription, Some(capture.recording)),
-                Err(error) if error.code == BackendErrorCode::Unsupported => {
-                    ensure_capture()?;
-                    match own_voice_start(
-                        &self.deps.task_spawner,
-                        Arc::clone(&resources),
-                        Arc::clone(&self.deps.dictation_engine).start_transcription_with_progress(
-                            Arc::clone(&self.deps.task_spawner),
-                            session_id,
-                            Arc::clone(&context),
-                            Arc::clone(&partials) as Arc<dyn TextStreamSink>,
-                            Arc::clone(&recording_progress)
-                                as Arc<dyn crate::ports::RecordingProgressSink>,
-                        ),
-                        |transcription| transcription.cancel(),
-                    )
-                    .await
-                    {
-                        Ok(session) => (session, None),
-                        Err(error) => {
-                            let _ = self.deps.services.less_computer.abort_capture(session_id);
-                            return Err(error);
-                        }
+            let omni_finish = AuxiliaryOmniFinish {
+                credentials: Arc::clone(&self.deps.credential_store),
+                context: Arc::clone(&context),
+                system_prompt: crate::prompts::auxiliary_voice_omni_instruction_prompt(),
+            };
+            let (transcription, recording, pcm, omni) = if context.pipeline_mode
+                == crate::shared_types::PipelineMode::Multimodal
+            {
+                let audio_capture = own_voice_start(
+                    &self.deps.task_spawner,
+                    Arc::clone(&resources),
+                    self.deps.dictation_engine.start_audio_capture(
+                        session_id,
+                        Arc::clone(&context),
+                        Arc::clone(&recording_progress)
+                            as Arc<dyn crate::ports::RecordingProgressSink>,
+                        resources.cancel.clone(),
+                    ),
+                    |capture| {
+                        Box::pin(async move { stop_and_discard_recording(capture.recording).await })
+                    },
+                )
+                .await;
+                match audio_capture {
+                    Ok(capture) => (
+                        None,
+                        Some(capture.recording),
+                        Some(capture.pcm),
+                        Some(omni_finish),
+                    ),
+                    Err(error) if error.code == BackendErrorCode::Unsupported => {
+                        // Host/external PCM feed path (same seam as ASR Unsupported).
+                        ensure_capture()?;
+                        (
+                            None,
+                            None,
+                            Some(Arc::new(CapturedPcm::default())),
+                            Some(omni_finish),
+                        )
+                    }
+                    Err(error) => {
+                        let _ = self.deps.services.less_computer.abort_capture(session_id);
+                        return Err(error);
                     }
                 }
-                Err(error) => {
-                    let _ = self.deps.services.less_computer.abort_capture(session_id);
-                    return Err(error);
+            } else {
+                let voice_capture = own_voice_start(
+                    &self.deps.task_spawner,
+                    Arc::clone(&resources),
+                    self.deps.dictation_engine.start_voice_capture(
+                        session_id,
+                        Arc::clone(&context),
+                        Arc::clone(&partials) as Arc<dyn TextStreamSink>,
+                        Arc::clone(&recording_progress)
+                            as Arc<dyn crate::ports::RecordingProgressSink>,
+                        resources.cancel.clone(),
+                    ),
+                    discard_voice_capture,
+                )
+                .await;
+                match voice_capture {
+                    Ok(capture) => (
+                        Some(capture.transcription),
+                        Some(capture.recording),
+                        None,
+                        None,
+                    ),
+                    Err(error) if error.code == BackendErrorCode::Unsupported => {
+                        ensure_capture()?;
+                        match own_voice_start(
+                            &self.deps.task_spawner,
+                            Arc::clone(&resources),
+                            Arc::clone(&self.deps.dictation_engine)
+                                .start_transcription_with_progress(
+                                    Arc::clone(&self.deps.task_spawner),
+                                    session_id,
+                                    Arc::clone(&context),
+                                    Arc::clone(&partials) as Arc<dyn TextStreamSink>,
+                                    Arc::clone(&recording_progress)
+                                        as Arc<dyn crate::ports::RecordingProgressSink>,
+                                ),
+                            |transcription| transcription.cancel(),
+                        )
+                        .await
+                        {
+                            Ok(session) => (Some(session), None, None, None),
+                            Err(error) => {
+                                let _ = self.deps.services.less_computer.abort_capture(session_id);
+                                return Err(error);
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        let _ = self.deps.services.less_computer.abort_capture(session_id);
+                        return Err(error);
+                    }
                 }
             };
             let request = if self.less_computer_capture_cancelled(session_id) {
@@ -3016,6 +3185,7 @@ impl OpenLessBackend {
                 Ok(request) => request,
                 Err(error) => {
                     let less_computer = Arc::clone(&self.deps.services.less_computer);
+                    let transcription = transcription.clone();
                     let _ = own_voice_effect(
                         &self.deps.task_spawner,
                         Box::pin(async move {
@@ -3023,7 +3193,9 @@ impl OpenLessBackend {
                             if let Some(recording) = recording {
                                 let _ = recording.stop().await;
                             }
-                            let _ = transcription.cancel().await;
+                            if let Some(transcription) = transcription {
+                                let _ = transcription.cancel().await;
+                            }
                             less_computer.abort_capture(session_id)
                         }),
                     )
@@ -3033,6 +3205,8 @@ impl OpenLessBackend {
             };
             let control = Arc::new(VoiceCaptureControl {
                 transcription,
+                pcm,
+                omni,
                 recording: Mutex::new(recording),
                 closed: std::sync::atomic::AtomicBool::new(false),
                 resources: Mutex::new(Some(resources)),
@@ -3111,7 +3285,7 @@ impl OpenLessBackend {
         let mut context = self
             .capture_dictation_context(
                 &DictationStartOptions::default(),
-                DictationContextPurpose::AsrOnly,
+                DictationContextPurpose::AuxiliaryVoice,
             )
             .await?;
         context.recording.archive_enabled = false;
@@ -3129,35 +3303,69 @@ impl OpenLessBackend {
             transcript: Mutex::new(crate::types::TranscriptAccumulator::default()),
             feedback: None,
         });
-        let capture = own_voice_start(
-            &self.deps.task_spawner,
-            Arc::clone(&resources),
-            self.deps.dictation_engine.start_voice_capture(
-                session_id,
-                context,
-                Arc::clone(&partials) as Arc<dyn TextStreamSink>,
-                Arc::new(SelectionVoiceRecordingProgress {
-                    session_id,
-                    selection_voice: Arc::clone(&self.deps.services.selection_voice),
-                    control,
-                    events: self.event_publisher(),
-                    task_spawner: Arc::clone(&self.deps.task_spawner),
-                    started_at,
-                    silence: Mutex::new(silence),
-                }),
-                resources.cancel.clone(),
-            ),
-            discard_voice_capture,
-        )
-        .await?;
-        Ok(VoiceTranscriptionSession {
+        let recording_progress = Arc::new(SelectionVoiceRecordingProgress {
+            events: self.event_publisher(),
             session_id,
-            transcription: capture.transcription,
-            recording: Mutex::new(Some(capture.recording)),
-            partials,
-            lifecycle: Arc::new(VoiceCaptureLifecycle::with_resources(resources)),
+            selection_voice: Arc::clone(&self.deps.services.selection_voice),
+            control,
             task_spawner: Arc::clone(&self.deps.task_spawner),
-        })
+            started_at,
+            silence: Mutex::new(silence),
+        });
+        if context.pipeline_mode == crate::shared_types::PipelineMode::Multimodal {
+            let capture = own_voice_start(
+                &self.deps.task_spawner,
+                Arc::clone(&resources),
+                self.deps.dictation_engine.start_audio_capture(
+                    session_id,
+                    Arc::clone(&context),
+                    Arc::clone(&recording_progress) as Arc<dyn crate::ports::RecordingProgressSink>,
+                    resources.cancel.clone(),
+                ),
+                |capture| {
+                    Box::pin(async move { stop_and_discard_recording(capture.recording).await })
+                },
+            )
+            .await?;
+            Ok(VoiceTranscriptionSession {
+                session_id,
+                transcription: None,
+                pcm: Some(capture.pcm),
+                omni: Some(AuxiliaryOmniFinish {
+                    credentials: Arc::clone(&self.deps.credential_store),
+                    context,
+                    system_prompt: crate::prompts::auxiliary_voice_omni_instruction_prompt(),
+                }),
+                recording: Mutex::new(Some(capture.recording)),
+                partials,
+                lifecycle: Arc::new(VoiceCaptureLifecycle::with_resources(resources)),
+                task_spawner: Arc::clone(&self.deps.task_spawner),
+            })
+        } else {
+            let capture = own_voice_start(
+                &self.deps.task_spawner,
+                Arc::clone(&resources),
+                self.deps.dictation_engine.start_voice_capture(
+                    session_id,
+                    Arc::clone(&context),
+                    Arc::clone(&partials) as Arc<dyn TextStreamSink>,
+                    Arc::clone(&recording_progress) as Arc<dyn crate::ports::RecordingProgressSink>,
+                    resources.cancel.clone(),
+                ),
+                discard_voice_capture,
+            )
+            .await?;
+            Ok(VoiceTranscriptionSession {
+                session_id,
+                transcription: Some(capture.transcription),
+                pcm: None,
+                omni: None,
+                recording: Mutex::new(Some(capture.recording)),
+                partials,
+                lifecycle: Arc::new(VoiceCaptureLifecycle::with_resources(resources)),
+                task_spawner: Arc::clone(&self.deps.task_spawner),
+            })
+        }
     }
 
     #[doc(hidden)]
@@ -6527,17 +6735,14 @@ impl OpenLessBackend {
             .filter(|entry| entry.enabled)
             .map(|entry| entry.phrase)
             .collect();
-        // Less/Selection audio always uses ASR. QA text needs no microphone
-        // provider; Omni needs neither traditional channel. An unused channel
-        // must not turn a valid route into a startup failure.
-        let pipeline_mode = if purpose == DictationContextPurpose::AsrOnly {
-            crate::shared_types::PipelineMode::Traditional
-        } else {
-            crate::shared_types::effective_pipeline_mode(
-                preferences.multimodal_pipeline_enabled,
-                preferences.pipeline_mode,
-            )
-        };
+        // Auxiliary Voice (Selection / Less) and QA Voice respect multimodal
+        // preferences. Skip unused traditional channels so a valid Omni route
+        // is not blocked by missing ASR/LLM. QA text needs no microphone
+        // provider.
+        let pipeline_mode = crate::shared_types::effective_pipeline_mode(
+            preferences.multimodal_pipeline_enabled,
+            preferences.pipeline_mode,
+        );
         let traditional = pipeline_mode == crate::shared_types::PipelineMode::Traditional;
         let active_asr_provider = if traditional && purpose != DictationContextPurpose::QaText {
             self.resolve_session_provider(ProviderSlot::Asr, &preferences.active_asr_provider)
@@ -6548,7 +6753,8 @@ impl OpenLessBackend {
             )
         };
         let mut deferred_llm_error = None;
-        let active_llm_provider = if traditional && purpose != DictationContextPurpose::AsrOnly {
+        let skip_llm_at_capture = purpose == DictationContextPurpose::AuxiliaryVoice;
+        let active_llm_provider = if traditional && !skip_llm_at_capture {
             match self
                 .resolve_session_provider(ProviderSlot::Llm, &preferences.active_llm_provider)
                 .await
@@ -8133,6 +8339,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn selection_voice_capture_respects_pipeline_mode() {
+        let data_dir = TestDataDir::new("selection-voice-pipeline-mode");
+        let recorder = Arc::new(crate::testing::FixtureAudioRecorder::new(
+            vec![vec![1, 0, 2, 0]],
+            vec![],
+        ));
+        let transcription = Arc::new(crate::testing::FixtureTranscriptionEngine::successful(
+            "edit this",
+            120,
+        ));
+        let engine = crate::PipelineDictationEngine::new(
+            recorder.clone(),
+            transcription.clone(),
+            Arc::new(crate::testing::FixtureTextPolisher::successful("unused")),
+        );
+        let backend = OpenLessBackend::new(
+            BackendConfig {
+                data_dir: data_dir.path().to_path_buf(),
+                ..BackendConfig::default()
+            },
+            BackendDependencies {
+                dictation_engine: Arc::new(engine),
+                ..BackendDependencies::unsupported()
+            },
+        )
+        .unwrap();
+        let mut preferences = backend.get_preferences();
+        preferences.selection_voice_enabled = true;
+        backend.set_preferences(preferences).unwrap();
+
+        let traditional_id = backend
+            .services()
+            .selection_voice
+            .begin(crate::domains::SelectionCapture {
+                text: "draft".into(),
+                source_app: None,
+            })
+            .await
+            .unwrap();
+        let traditional = backend
+            .start_selection_voice_capture(
+                traditional_id,
+                Arc::new(FakeRecordingControl::default()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(traditional.finish().await.unwrap(), "edit this");
+        assert_eq!(transcription.pcm(), vec![1, 0, 2, 0]);
+        backend
+            .services()
+            .selection_voice
+            .cancel(Some(traditional_id))
+            .await
+            .unwrap();
+
+        let mut preferences = backend.get_preferences();
+        preferences.multimodal_pipeline_enabled = true;
+        preferences.pipeline_mode = crate::shared_types::PipelineMode::Multimodal;
+        backend.set_preferences(preferences).unwrap();
+        let asr_pcm_before = transcription.pcm().len();
+        let multimodal_id = backend
+            .services()
+            .selection_voice
+            .begin(crate::domains::SelectionCapture {
+                text: "draft".into(),
+                source_app: None,
+            })
+            .await
+            .unwrap();
+        let multimodal = backend
+            .start_selection_voice_capture(
+                multimodal_id,
+                Arc::new(FakeRecordingControl::default()),
+            )
+            .await
+            .unwrap();
+        // Multimodal finish needs Omni credentials; capture must not feed ASR.
+        assert!(multimodal.finish().await.is_err());
+        assert_eq!(transcription.pcm().len(), asr_pcm_before);
+        assert_eq!(recorder.stop_count(), 2);
+        backend
+            .services()
+            .selection_voice
+            .cancel(Some(multimodal_id))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn qa_and_selection_voice_capture_can_cancel_during_transcription_finish() {
         struct PendingTranscription {
             entered: Arc<tokio::sync::Semaphore>,
@@ -8217,7 +8512,9 @@ mod tests {
         });
         let capture = VoiceTranscriptionSession {
             session_id: SessionId::new(),
-            transcription: transcription.clone(),
+            transcription: Some(transcription.clone()),
+            pcm: None,
+            omni: None,
             recording: Mutex::new(None),
             partials: Arc::new(VoiceTranscriptSink {
                 publisher: backend.event_publisher(),
