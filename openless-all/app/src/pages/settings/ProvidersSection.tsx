@@ -1370,7 +1370,13 @@ function ProviderTools({
       const latency = Math.round(performance.now() - started);
       setResult(
         result.ok ? 'success' : 'error',
-        t(result.ok ? 'settings.providers.validateSuccess' : 'settings.providers.validateFailed'),
+        t(
+          result.ok
+            ? kind === 'omni'
+              ? 'settings.providers.validateSuccessOmni'
+              : 'settings.providers.validateSuccess'
+            : 'settings.providers.validateFailed',
+        ),
       );
       await persistTest(result.ok, result.ok ? latency : null, result.ok ? null : 'validateFailed');
     } catch (error) {
@@ -1503,7 +1509,11 @@ function ProviderTools({
           <ChannelSectionHeading
             icon="bolt"
             title={t('settings.channels.validationTitle')}
-            description={t('settings.channels.validationHint')}
+            description={t(
+              kind === 'omni'
+                ? 'settings.channels.validationHintOmni'
+                : 'settings.channels.validationHint',
+            )}
           />
           <button
             className="ol-channel-verify"

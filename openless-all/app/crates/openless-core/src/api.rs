@@ -11037,11 +11037,16 @@ mod tests {
             Some("polished source".to_string()),
             1250,
         );
+        // FixedClock stamps history/activity; retain_with_policy still uses wall-clock
+        // Utc::now(). Keep the stamp within the last day so a 30-day retention window
+        // never prunes the just-written entry as the calendar advances.
+        use chrono::Timelike;
+        let stamp = (chrono::Utc::now() - chrono::Duration::days(1))
+            .with_nanosecond(0)
+            .expect("truncate sub-second");
         let fixed_clock = Arc::new(crate::testing::FixedClock::new(
-            chrono::DateTime::parse_from_rfc3339("2026-08-28T12:34:56Z")
-                .unwrap()
-                .with_timezone(&chrono::Utc),
-            chrono::NaiveDate::from_ymd_opt(2026, 8, 28).unwrap(),
+            stamp,
+            stamp.date_naive(),
         ));
         let backend = OpenLessBackend::new_with_clock(
             BackendConfig {
@@ -11093,7 +11098,7 @@ mod tests {
         assert_eq!(history.len(), 1);
         let entry = &history[0];
         assert_eq!(entry.id, session_id.to_string());
-        assert_eq!(entry.created_at, "2026-08-28T12:34:56+00:00");
+        assert_eq!(entry.created_at, stamp.to_rfc3339());
         assert_eq!(entry.raw_transcript, "raw voice");
         assert_eq!(entry.final_text, "translated output");
         assert_eq!(entry.polish_source.as_deref(), Some("polished source"));
@@ -11105,7 +11110,7 @@ mod tests {
         );
         let activity = backend.list_activity().unwrap();
         assert_eq!(activity.len(), 1);
-        assert_eq!(activity[0].date, "2026-08-28");
+        assert_eq!(activity[0].date, stamp.date_naive().to_string());
         assert_eq!(
             activity[0].chars,
             "translated output".chars().count() as u64

@@ -1562,6 +1562,8 @@ export const de: typeof zhCN = {
       validationTitle: 'Verbindungsprüfung',
       validationHint:
         'Sendet manuell eine echte Anfrage, um diese Konfiguration zu prüfen. Dabei kann Dienstguthaben verbraucht werden. Das Speichern der Einstellungen führt keine Prüfung aus.',
+      validationHintOmni:
+        'Sendet manuell eine reine Text-Verbindungsanfrage (ohne Aufnahme). Erfolg bedeutet nicht, dass Audio-Diktat funktioniert — bitte mit einer kurzen Aufnahme bestätigen. Dabei kann Dienstguthaben verbraucht werden.',
       autoSaveHint:
         'Änderungen werden automatisch gespeichert. Anschließend kannst du die Verbindung manuell prüfen.',
       nameHint:
@@ -1824,6 +1826,8 @@ export const de: typeof zhCN = {
       selectModel: 'Wähle ein Modell, um das Feld oben auszufüllen',
       modelSaved: 'Modell {{model}} gespeichert.',
       validateSuccess: 'Verbindungsprüfung bestanden.',
+      validateSuccessOmni:
+        'Text-Verbindung bestanden. Das bedeutet nicht, dass Audio-Diktat funktioniert — bitte mit einer kurzen Aufnahme bestätigen.',
       validateFailed: 'Verbindungsprüfung fehlgeschlagen.',
       providerHttpStatus:
         'Der Anbieter hat HTTP {{status}} zurückgegeben. Prüfe die Berechtigungen des API-Schlüssels oder den Endpunkt.',

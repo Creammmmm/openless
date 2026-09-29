@@ -1529,6 +1529,8 @@ export const en: typeof zhCN = {
       validationTitle: 'Connection check',
       validationHint:
         'Manually send a real request to check this configuration. It may use service credits. Saving settings does not run a check.',
+      validationHintOmni:
+        'Manually send a text-only connectivity request (no recording). Passing does not mean audio dictation works—please confirm with a short recording. It may use service credits.',
       autoSaveHint:
         'Changes save automatically. Once configured, you can check the connection manually.',
       nameHint:
@@ -1785,6 +1787,8 @@ export const en: typeof zhCN = {
       selectModel: 'Select a model to fill the field above',
       modelSaved: 'Saved model {{model}}.',
       validateSuccess: 'Connection check passed.',
+      validateSuccessOmni:
+        'Text connectivity passed. This does not mean audio dictation works—please confirm with a short recording.',
       validateFailed: 'Connection check failed.',
       providerHttpStatus:
         'Provider returned HTTP {{status}}. Check the API key permissions or endpoint.',

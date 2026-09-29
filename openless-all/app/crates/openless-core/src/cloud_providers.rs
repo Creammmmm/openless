@@ -1688,7 +1688,8 @@ async fn build_omni_provider(
 /// Validate an Omni provider using the same construction and request path as
 /// the production dictation pipeline.  The probe is intentionally text-only:
 /// it exercises credential, endpoint, model and protocol resolution without
-/// retaining user audio.
+/// retaining user audio.  UI must not treat text success as proof that audio
+/// dictation works (issue #1118).
 pub async fn validate_shared_omni_provider(
     credentials: Arc<dyn CredentialStore>,
     context: Arc<DictationContext>,

@@ -1458,6 +1458,8 @@ export const zhTW: typeof zhCN = {
       validationTitle: '連線驗證',
       validationHint:
         '手動發出一次實際請求，檢查目前設定；可能消耗服務額度。儲存設定不會自動驗證。',
+      validationHintOmni:
+        '手動發出一次文字連通性請求（不含錄音）。通過不代表音訊聽寫可用，請再做一次短錄音確認。可能消耗服務額度。',
       autoSaveHint: '修改欄位後會自動儲存；完成設定後，可手動驗證連線。',
       nameHint: '名稱僅用於區分同一供應商的多個渠道，不影響模型或連線。',
       errModel: '模型',
@@ -1694,6 +1696,7 @@ export const zhTW: typeof zhCN = {
       selectModel: '選擇一個模型寫入上方欄位',
       modelSaved: '已儲存模型 {{model}}。',
       validateSuccess: '連線檢查透過。',
+      validateSuccessOmni: '文字連通性通過。這不代表音訊聽寫可用，請再做一次短錄音確認。',
       validateFailed: '連線檢查未透過。',
       providerHttpStatus: '供應商介面返回 {{status}}，請檢查 API Key 權限或 Endpoint。',
       endpointMustUseHttps:

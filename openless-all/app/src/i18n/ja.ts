@@ -1519,6 +1519,8 @@ export const ja: typeof zhCN = {
       validationTitle: '接続の確認',
       validationHint:
         '実際にリクエストを送信して設定を確認します。サービスの利用枠を消費する場合があります。設定の保存だけでは確認を実行しません。',
+      validationHintOmni:
+        'テキストのみの疎通確認を手動送信します（録音なし）。成功しても音声ディクテーションが使えるとは限りません。短い録音で再確認してください。サービスの利用枠を消費する場合があります。',
       autoSaveHint: '変更は自動保存されます。設定が終わったら、手動で接続を確認できます。',
       nameHint:
         '同じプロバイダーのチャンネルを区別するための名前です。モデルや接続には影響しません。',
@@ -1772,6 +1774,8 @@ export const ja: typeof zhCN = {
       selectModel: 'モデルを選んで上記欄に入力',
       modelSaved: 'モデル {{model}} を保存しました。',
       validateSuccess: '接続チェックに合格しました。',
+      validateSuccessOmni:
+        'テキスト疎通は成功しました。これは音声ディクテーションが使えることを意味しません。短い録音で確認してください。',
       validateFailed: '接続チェックに失敗しました。',
       providerHttpStatus:
         'サプライヤーが {{status}} を返しました。API Key 権限またはエンドポイントを確認してください。',

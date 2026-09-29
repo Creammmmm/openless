@@ -1554,6 +1554,8 @@ export const es: typeof zhCN = {
       validationTitle: 'Comprobación de conexión',
       validationHint:
         'Envía manualmente una solicitud real para comprobar la configuración. Puede consumir saldo del servicio. Guardar los ajustes no ejecuta esta comprobación.',
+      validationHintOmni:
+        'Envía manualmente una solicitud solo de texto (sin grabación). Pasar no significa que el dictado de audio funcione: confirma con una grabación corta. Puede consumir saldo del servicio.',
       autoSaveHint:
         'Los cambios se guardan automáticamente. Después de configurar el servicio, puedes comprobar la conexión.',
       nameHint:
@@ -1813,6 +1815,8 @@ export const es: typeof zhCN = {
       selectModel: 'Elige un modelo para completar el campo de arriba',
       modelSaved: 'Modelo {{model}} guardado.',
       validateSuccess: 'Conexión comprobada correctamente.',
+      validateSuccessOmni:
+        'Conectividad de texto correcta. Esto no significa que el dictado de audio funcione: confirma con una grabación corta.',
       validateFailed: 'La comprobación de conexión falló.',
       providerHttpStatus:
         'El proveedor devolvió HTTP {{status}}. Comprueba los permisos de la clave API o la dirección.',

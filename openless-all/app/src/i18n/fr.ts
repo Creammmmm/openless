@@ -1577,6 +1577,8 @@ export const fr: typeof zhCN = {
       validationTitle: 'Vérification de la connexion',
       validationHint:
         'Envoyez manuellement une requête réelle pour vérifier cette configuration. Elle peut consommer des crédits du service. L’enregistrement des réglages ne lance pas de vérification.',
+      validationHintOmni:
+        'Envoyez manuellement une requête de connectivité texte uniquement (sans enregistrement). Réussir ne signifie pas que la dictée audio fonctionne — confirmez avec un court enregistrement. Elle peut consommer des crédits du service.',
       autoSaveHint:
         'Les modifications sont enregistrées automatiquement. Une fois le service configuré, vous pouvez vérifier la connexion.',
       nameHint:
@@ -1842,6 +1844,8 @@ export const fr: typeof zhCN = {
       selectModel: 'Sélectionnez un modèle pour remplir le champ ci-dessus',
       modelSaved: 'Modèle {{model}} enregistré.',
       validateSuccess: 'Connexion vérifiée avec succès.',
+      validateSuccessOmni:
+        'Connectivité texte OK. Cela ne signifie pas que la dictée audio fonctionne — confirmez avec un court enregistrement.',
       validateFailed: 'Échec de la vérification de connexion.',
       providerHttpStatus:
         'Le fournisseur a renvoyé HTTP {{status}}. Vérifiez les autorisations de la clé API ou l’adresse.',

@@ -46,11 +46,8 @@ impl OmniConfig {
             || self.base_url.contains("generativelanguage.googleapis.com")
     }
 
-    /// Bailian/DashScope-compatible endpoints resolve `input_audio.data` as
-    /// a URL/data-URL and reject bare Base64 with 400 ("The provided URL
-    /// does not appear to be valid"). Same as the `asr::dashscope_multimodal`
-    /// transcription channel: Base64 needs the data-URL prefix. Reuses
-    /// polish's hostname keywords but checks only the URL-parsed host.
+    /// DashScope Omni requires a MIME-free data URL and a separate audio format.
+    /// Match the parsed hostname so unrelated compatible endpoints retain bare Base64.
     fn audio_requires_data_url(&self) -> bool {
         reqwest::Url::parse(self.base_url.trim())
             .ok()
@@ -103,6 +100,10 @@ impl OpenAICompatibleOmni {
                 body["temperature"] = json!(temperature);
             }
         }
+        // DashScope Omni requests text-only output.
+        if self.config.audio_requires_data_url() {
+            body["modalities"] = json!(["text"]);
+        }
         apply_openai_compatible_thinking_control(
             &mut body,
             &self.config.provider_id,
@@ -122,10 +123,9 @@ impl OpenAICompatibleOmni {
         let user_content = match wav_bytes {
             Some(wav) => {
                 let encoded = base64::engine::general_purpose::STANDARD.encode(wav);
-                // Bailian-family endpoints require the data-URL prefix; the
-                // official OpenAI and other compatible endpoints keep bare Base64.
+                // DashScope Omni uses data:;base64 plus the separate format field.
                 let data = if self.config.audio_requires_data_url() {
-                    format!("data:audio/wav;base64,{encoded}")
+                    format!("data:;base64,{encoded}")
                 } else {
                     encoded
                 };
@@ -498,8 +498,8 @@ mod tests {
             .as_str()
             .expect("audio data");
         let payload = data
-            .strip_prefix("data:audio/wav;base64,")
-            .expect("data-url prefix for DashScope");
+            .strip_prefix("data:;base64,")
+            .expect("official DashScope Omni data-url prefix");
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(payload)
             .expect("valid base64");
@@ -517,7 +517,7 @@ mod tests {
         assert!(parts[0]["input_audio"]["data"]
             .as_str()
             .expect("audio data")
-            .starts_with("data:audio/wav;base64,"));
+            .starts_with("data:;base64,"));
     }
 
     #[test]
@@ -563,6 +563,16 @@ mod tests {
         assert_eq!(body["model"], "gpt-4o-audio-preview");
         // temperature is stored as f32 (0.3f32 serializes as 0.30000001192092896); compare with tolerance.
         assert!((body["temperature"].as_f64().unwrap() - 0.3).abs() < 1e-6);
+        assert!(body.get("modalities").is_none());
+    }
+
+    #[test]
+    fn omni_body_sets_text_modalities_for_dashscope() {
+        let mut dashscope = config();
+        dashscope.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1".into();
+        let provider = OpenAICompatibleOmni::new(dashscope);
+        let body = provider.omni_body(true, vec![json!({"role": "user", "content": "x"})]);
+        assert_eq!(body["modalities"], json!(["text"]));
     }
 
     #[test]
