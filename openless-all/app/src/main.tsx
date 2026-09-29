@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { SplashVideo } from './components/SplashVideo';
+import { CoreStartupScreen } from './components/CoreStartupScreen';
 import { detectOS } from './components/WindowChrome';
 import { i18nReady } from './i18n';
 import { initThemeMode } from './lib/themeMode';
@@ -47,7 +48,17 @@ const renderApp = () => {
 };
 
 // Mount only after the selected local language chunk is ready; avoid mixed-language startup.
-void i18nReady.then(async () => {
-  if (isMainWindow) await installEncryptedSyncUiBridge().catch(() => {});
-  renderApp();
-});
+void i18nReady
+  .then(async () => {
+    if (isMainWindow) {
+      // Native credential access can wait for an OS prompt before the UI mirror is ready.
+      root.render(<CoreStartupScreen />);
+      await installEncryptedSyncUiBridge().catch(() => {});
+    }
+    renderApp();
+  })
+  .catch((error: unknown) => {
+    root.render(
+      <CoreStartupScreen error={String(error)} compact={isCapsule || isLessComputerGlow} />,
+    );
+  });
