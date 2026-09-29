@@ -80,9 +80,15 @@ export function availableServiceViews(localModels: boolean): ServiceViewId[] {
   return ['llm', 'asr', 'omni', ...(localModels ? (['models'] as const) : []), 'connections'];
 }
 
+export function isServiceViewInactive(view: ServiceViewId, multimodal: boolean): boolean {
+  return multimodal ? view !== 'omni' && view !== 'connections' : view === 'omni';
+}
+
 export function resolveServiceView(
   requested: ServiceViewId,
   available: ServiceViewId[],
+  multimodal: boolean,
 ): ServiceViewId {
-  return available.includes(requested) ? requested : available[0];
+  const enabled = available.filter((view) => !isServiceViewInactive(view, multimodal));
+  return enabled.includes(requested) ? requested : enabled[0];
 }

@@ -35,6 +35,7 @@ import { SettingRow, segmentedTrackStyle } from './shared';
 import { Card } from '../_atoms';
 import {
   availableServiceViews,
+  isServiceViewInactive,
   resolveServiceView,
   type ServiceViewId,
   type AdvancedPage,
@@ -119,7 +120,7 @@ export function ServicesTab() {
     prefs?.multimodalPipelineEnabled === true && prefs.pipelineMode === 'multimodal';
   const [view, setView] = useState<ServiceViewId>('llm');
   const views = availableServiceViews(showLocalModel);
-  const selectedView = resolveServiceView(view, views);
+  const selectedView = resolveServiceView(view, views, multimodal);
   const contentRef = useRef<HTMLDivElement>(null);
   const setPipelineMode = (mode: 'traditional' | 'multimodal') => {
     if (!prefs || (multimodal ? 'multimodal' : 'traditional') === mode) return;
@@ -201,8 +202,7 @@ export function ServicesTab() {
         className="ol-service-views ol-thinscroll"
       >
         {views.map((id) => {
-          const inactive =
-            id === 'omni' ? !multimodal : multimodal && (id === 'llm' || id === 'asr');
+          const inactive = isServiceViewInactive(id, multimodal);
           const required = !inactive && (id === 'llm' || id === 'asr');
           const configured =
             id === 'llm' ? requiredConfigured.llm : id === 'asr' ? requiredConfigured.asr : false;
@@ -212,6 +212,7 @@ export function ServicesTab() {
             <button
               key={id}
               type="button"
+              disabled={inactive}
               aria-pressed={selectedView === id}
               onClick={() => setView(id)}
               aria-label={
@@ -251,12 +252,10 @@ export function ServicesTab() {
         })}
       </div>
       <div key={selectedView} ref={contentRef} className="ol-service-content">
-        {((selectedView === 'omni' && !multimodal) ||
-          (multimodal && (selectedView === 'llm' || selectedView === 'asr'))) && (
-          <p className="ol-service-inactive-note">{t('modal.serviceViews.inactiveDetail')}</p>
-        )}
         {/* The LocalModelPicker inside the channel editor jumps to this view through this context. */}
-        <LocalModelsNavContext.Provider value={() => setView('models')}>
+        <LocalModelsNavContext.Provider
+          value={showLocalModel && !multimodal ? () => setView('models') : null}
+        >
           {selectedView === 'llm' && <ProvidersSection kind="llm" />}
           {selectedView === 'asr' && <ProvidersSection kind="asr" />}
           {selectedView === 'omni' && <OmniChannelSection />}

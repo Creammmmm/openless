@@ -2,6 +2,7 @@ import {
   searchSettingsSections,
   visibleSettingsSections,
   availableServiceViews,
+  isServiceViewInactive,
   resolveServiceView,
   visibleAdvancedPages,
 } from './navigation';
@@ -102,14 +103,39 @@ assert.deepEqual(
   'both pipeline configurations remain visible in the same order',
 );
 assert.equal(
-  resolveServiceView('llm', serviceViews),
-  'llm',
-  'switching modes keeps the selected traditional configuration visible',
+  resolveServiceView('llm', serviceViews, true),
+  'omni',
+  'switching to multimodal leaves the disabled traditional editor',
 );
 assert.equal(
-  resolveServiceView('omni', serviceViews),
+  resolveServiceView('omni', serviceViews, false),
+  'llm',
+  'switching to traditional leaves the disabled multimodal editor',
+);
+assert.equal(
+  resolveServiceView('models', serviceViews, true),
   'omni',
-  'switching modes keeps the selected multimodal configuration visible',
+  'multimodal mode cannot retain a previously selected local model page',
+);
+assert.equal(
+  resolveServiceView('models', serviceViews, false),
+  'models',
+  'traditional mode retains local model management on supported platforms',
+);
+assert.deepEqual(
+  serviceViews.filter((view) => isServiceViewInactive(view, true)),
+  ['llm', 'asr', 'models'],
+  'multimodal mode disables traditional services and local models',
+);
+assert.deepEqual(
+  serviceViews.filter((view) => isServiceViewInactive(view, false)),
+  ['omni'],
+  'traditional mode only disables the multimodal page',
+);
+assert.equal(
+  resolveServiceView('connections', serviceViews, true),
+  'connections',
+  'connection settings remain reachable in multimodal mode',
 );
 const phoneViews = availableServiceViews(false);
 assert.equal(
@@ -123,9 +149,14 @@ assert.equal(
   'the multimodal configuration remains reachable on mobile',
 );
 assert.equal(
-  resolveServiceView('models', phoneViews),
+  resolveServiceView('models', phoneViews, false),
   'llm',
   'a no-longer-available page falls back to a working editor',
+);
+assert.equal(
+  resolveServiceView('models', phoneViews, true),
+  'omni',
+  'unsupported local model navigation falls back to the active multimodal page',
 );
 assert.deepEqual(
   phoneViews,
