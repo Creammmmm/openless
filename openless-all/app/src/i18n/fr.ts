@@ -2326,6 +2326,9 @@ export const fr: typeof zhCN = {
       omni: 'Multimodal',
       models: 'Modèles locaux',
       connections: 'Connexions',
+      inactive: 'Inutilisé dans ce mode',
+      inactiveDetail:
+        'Ces réglages sont conservés, mais le mode de reconnaissance actuel ne les utilise pas.',
       statusConfigured:
         'Point vert : au moins un service est activé. Les requêtes utilisent le premier service activé.',
       statusMissing: 'Point rouge : aucun service n’est activé.',
@@ -2356,19 +2359,19 @@ export const fr: typeof zhCN = {
         'Réglez le thème, la disposition et la langue de l’interface pour une lecture confortable.',
       privacy:
         'Vérifiez les autorisations et les connexions. Gérez l’historique, les enregistrements et les données locales.',
-      advanced:
-        'Configurez Less Computer, le traitement multimodal et le débogage selon vos besoins.',
+      advanced: 'Configurez Less Computer et le débogage selon vos besoins.',
       about: 'Consultez votre version, le canal et les réglages de mise à jour automatique.',
     },
     searchKeywords: {
       general:
         'microphone enregistrement saisie téléphone distant réseau local LAN PIN capsule muet démarrage automatique',
       shortcuts: 'raccourci touche combinaison sélection amélioration voix modification',
-      services: 'ASR LLM API canal modèle cloud local hors ligne réseau proxy catalogue',
+      services:
+        'ASR LLM API canal modèle cloud local hors ligne réseau proxy catalogue multimodal pipeline Omni',
       appearance: 'thème sombre clair langue police texte taille disposition carte activité',
       privacy:
         'autorisation microphone accessibilité historique enregistrement stockage confidentialité exporter',
-      advanced: 'Less Computer Claude agent multimodal Omni débogage journaux expérience',
+      advanced: 'Less Computer Claude agent débogage journaux expérience',
       about: 'version Beta stable mise à jour actualisation',
     },
     sections: {

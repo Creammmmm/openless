@@ -2311,6 +2311,9 @@ export const de: typeof zhCN = {
       omni: 'Multimodal',
       models: 'Lokale Modelle',
       connections: 'Verbindungen',
+      inactive: 'In diesem Modus ungenutzt',
+      inactiveDetail:
+        'Diese Einstellungen bleiben gespeichert, werden aber im aktuellen Erkennungsmodus nicht verwendet.',
       statusConfigured:
         'Grüner Punkt: mindestens ein Dienst ist aktiv. Anfragen nutzen den ersten aktivierten Dienst.',
       statusMissing: 'Roter Punkt: noch kein Dienst ist aktiviert.',
@@ -2338,7 +2341,7 @@ export const de: typeof zhCN = {
       appearance: 'Design, Seitenlayout und Sprache der Oberfläche für angenehmes Lesen anpassen.',
       privacy:
         'Systemberechtigungen und Verbindungen prüfen. Verlauf, Aufnahmen und lokale Daten verwalten.',
-      advanced: 'Less Computer, multimodale Verarbeitung und Diagnose nach Bedarf einrichten.',
+      advanced: 'Less Computer und Diagnose nach Bedarf einrichten.',
       about: 'Version, Updatekanal und automatische Updateeinstellungen anzeigen.',
     },
     searchKeywords: {
@@ -2346,11 +2349,12 @@ export const de: typeof zhCN = {
         'Mikrofon Aufnahme Eingabe Smartphone Ferneingabe LAN PIN Kapsel Stumm Start Autostart',
       shortcuts:
         'Kurzbefehl Hotkey Taste Tastenkombination Auswahl Überarbeitung Sprachbearbeitung',
-      services: 'ASR LLM API Kanal Modell Cloud Lokal Offline Netzwerk Proxy Marktplatz',
+      services:
+        'ASR LLM API Kanal Modell Cloud Lokal Offline Netzwerk Proxy Marktplatz Multimodal Pipeline Omni',
       appearance: 'Design Dunkel Hell Sprache Schrift Textgröße Layout Aktivitätsübersicht',
       privacy:
         'Berechtigung Mikrofon Bedienungshilfen Verlauf Aufnahme Speicher Datenschutz Export',
-      advanced: 'Less Computer Claude Agent Multimodal Omni Diagnose Protokolle Experiment',
+      advanced: 'Less Computer Claude Agent Diagnose Protokolle Experiment',
       about: 'Version Beta Stabil Update Aktualisierung',
     },
     sections: {

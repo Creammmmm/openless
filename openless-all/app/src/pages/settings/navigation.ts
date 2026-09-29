@@ -7,7 +7,6 @@ export type SettingsSectionId =
 export const ADVANCED_PAGES = [
   { id: 'lessComputer', icon: 'mac', titleKey: 'settings.codingAgent.title' },
   { id: 'claudeConsole', icon: 'chevLR', titleKey: 'settings.codingConsole.title' },
-  { id: 'multimodal', icon: 'sparkle', titleKey: 'settings.advanced.multimodalPipelineTitle' },
   { id: 'debug', icon: 'bolt', titleKey: 'settings.debug.title' },
 ] as const;
 
@@ -62,23 +61,8 @@ export function searchSettingsSections<T extends SearchableSettingsSection>(
 
 export type ServiceViewId = 'llm' | 'asr' | 'omni' | 'models' | 'connections';
 
-/**
- * The omni view shows as soon as the multimodal master switch (multimodalPipelineEnabled) is
- * on — the pipeline mode (legacy / multimodal) switcher lives in that view; otherwise turning
- * the switch on leaves no entry point into multimodal configuration. The legacy llm/asr pages
- * hide only after actually switching to multimodal mode.
- */
-export function availableServiceViews(
-  multimodalPipelineEnabled: boolean,
-  multimodalMode: boolean,
-  localModels: boolean,
-): ServiceViewId[] {
-  return [
-    ...(multimodalPipelineEnabled ? (['omni'] as const) : []),
-    ...(!multimodalMode ? (['llm', 'asr'] as const) : []),
-    ...(localModels ? (['models'] as const) : []),
-    'connections',
-  ];
+export function availableServiceViews(localModels: boolean): ServiceViewId[] {
+  return ['llm', 'asr', 'omni', ...(localModels ? (['models'] as const) : []), 'connections'];
 }
 
 export function resolveServiceView(

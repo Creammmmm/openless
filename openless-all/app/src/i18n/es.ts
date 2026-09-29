@@ -2293,6 +2293,9 @@ export const es: typeof zhCN = {
       omni: 'Multimodal',
       models: 'Modelos locales',
       connections: 'Conexiones',
+      inactive: 'No se usa en este modo',
+      inactiveDetail:
+        'Esta configuración se conserva, pero el modo de reconocimiento actual no la utiliza.',
       statusConfigured:
         'Punto verde: hay al menos un servicio activado. Las solicitudes usan el primero.',
       statusMissing: 'Punto rojo: todavía no hay ningún servicio activado.',
@@ -2320,19 +2323,19 @@ export const es: typeof zhCN = {
       appearance: 'Ajusta el tema, el diseño y el idioma de la interfaz para leer con comodidad.',
       privacy:
         'Comprueba los permisos y las conexiones. Administra el historial, las grabaciones y los datos locales.',
-      advanced:
-        'Configura Less Computer, el procesamiento multimodal y la depuración según tus necesidades.',
+      advanced: 'Configura Less Computer y la depuración según tus necesidades.',
       about: 'Consulta tu versión, el canal y los ajustes de actualización automática.',
     },
     searchKeywords: {
       general:
         'micrófono grabación entrada teléfono remoto LAN PIN cápsula silenciar inicio automático',
       shortcuts: 'atajo tecla combinación selección mejorar voz edición',
-      services: 'ASR LLM API canal modelo nube local sin conexión red proxy catálogo',
+      services:
+        'ASR LLM API canal modelo nube local sin conexión red proxy catálogo multimodal canalización Omni',
       appearance: 'tema oscuro claro idioma fuente texto tamaño diseño mapa actividad',
       privacy:
         'permiso micrófono accesibilidad historial grabación almacenamiento privacidad exportar',
-      advanced: 'Less Computer Claude agente multimodal Omni depuración registros experimento',
+      advanced: 'Less Computer Claude agente depuración registros experimento',
       about: 'versión Beta estable actualización actualizar',
     },
     sections: {

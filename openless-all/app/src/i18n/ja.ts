@@ -2221,6 +2221,8 @@ export const ja: typeof zhCN = {
       omni: 'マルチモーダル',
       models: 'ローカルモデル',
       connections: '接続と拡張',
+      inactive: '現在のモードでは未使用',
+      inactiveDetail: 'この設定は保存されていますが、現在の認識パイプラインでは使用されません。',
       statusConfigured:
         '緑の点：有効なサービスがあります。リクエストは有効な一覧の先頭を使います。',
       statusMissing: '赤の点：まだ有効なサービスがありません。',
@@ -2245,16 +2247,17 @@ export const ja: typeof zhCN = {
       services: '音声認識と文章処理のサービス、チャンネル、ローカルモデル、接続を管理します。',
       appearance: 'テーマ、レイアウト、表示言語を読みやすく調整します。',
       privacy: 'システム権限と接続を確認し、履歴、録音、ローカルデータを管理します。',
-      advanced: '必要に応じて Less Computer、マルチモーダル処理、デバッグを設定します。',
+      advanced: '必要に応じて Less Computer とデバッグを設定します。',
       about: '現在のバージョン、更新チャンネル、自動更新を確認します。',
     },
     searchKeywords: {
       general: 'マイク 録音 入力 スマホ リモート LAN PIN カプセル ミュート 起動',
       shortcuts: 'ショートカット ホットキー キー 選択 推敲 音声編集',
-      services: 'ASR LLM API チャンネル モデル クラウド ローカル ネットワーク プロキシ マーケット',
+      services:
+        'ASR LLM API チャンネル モデル クラウド ローカル ネットワーク プロキシ マーケット マルチモーダル 認識パイプライン Omni',
       appearance: 'テーマ ダーク ライト 言語 フォント 文字 サイズ レイアウト ヒートマップ',
       privacy: '権限 マイク アクセシビリティ 履歴 録音 保存 プライバシー エクスポート',
-      advanced: 'Less Computer Claude Agent マルチモーダル Omni デバッグ ログ 実験',
+      advanced: 'Less Computer Claude Agent デバッグ ログ 実験',
       about: 'バージョン Beta 安定 更新 アップデート',
     },
 

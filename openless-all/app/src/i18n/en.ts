@@ -2249,6 +2249,9 @@ export const en: typeof zhCN = {
       omni: 'Multimodal',
       models: 'Local models',
       connections: 'Connections',
+      inactive: 'Not used in this mode',
+      inactiveDetail:
+        'These settings are saved, but the current recognition pipeline does not use them.',
       statusConfigured:
         'Green dot: at least one service is on. Requests use the first enabled service.',
       statusMissing: 'Red dot: no service is turned on yet.',
@@ -2275,16 +2278,17 @@ export const en: typeof zhCN = {
       appearance: 'Adjust the theme, page layout and interface language for comfortable reading.',
       privacy:
         'Check system permissions and connections. Manage history, recordings and local data.',
-      advanced: 'Configure Less Computer, multimodal processing and debugging as needed.',
+      advanced: 'Configure Less Computer and debugging as needed.',
       about: 'View your version, update channel and automatic update settings.',
     },
     searchKeywords: {
       general: 'microphone recording input phone remote LAN PIN capsule mute startup autostart',
       shortcuts: 'shortcut hotkey key combination selection polish voice editing',
-      services: 'ASR LLM API channel model cloud local offline network proxy marketplace',
+      services:
+        'ASR LLM API channel model cloud local offline network proxy marketplace multimodal pipeline Omni',
       appearance: 'theme dark light language font text size layout heatmap',
       privacy: 'permission microphone accessibility history recording storage privacy export',
-      advanced: 'Less Computer Claude Agent multimodal Omni debug logs experiment',
+      advanced: 'Less Computer Claude Agent debug logs experiment',
       about: 'version Beta stable update upgrade',
     },
 

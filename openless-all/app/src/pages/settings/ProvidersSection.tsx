@@ -36,7 +36,7 @@ import { useLayoutStack, useConservativeLayout } from '../../lib/useMobileLayout
 import { useHotkeySettings } from '../../state/HotkeySettingsContext';
 import { SelectLite, type SelectOption } from '../../components/ui/SelectLite';
 import { Card } from '../_atoms';
-import { SettingRow, SectionTitle, Toggle, inputStyle, segmentedTrackStyle } from './shared';
+import { SettingRow, SectionTitle, Toggle, inputStyle } from './shared';
 import {
   parseAdvancedAsrConfig,
   serializeAdvancedAsrConfig,
@@ -828,8 +828,15 @@ export function ChannelCredentialFields({
             : undefined
         }
       />
-      {unifiedBailian && <BailianProtocolField key={channelId} channelId={channelId}
-        onChange={setBailianProtocol} onUserMutation={onAsrMutation} onBlockedChange={trackField} />}
+      {unifiedBailian && (
+        <BailianProtocolField
+          key={channelId}
+          channelId={channelId}
+          onChange={setBailianProtocol}
+          onUserMutation={onAsrMutation}
+          onBlockedChange={trackField}
+        />
+      )}
       {unifiedBailian && (
         <BailianProtocolHint
           key={`${channelId}:proto:${asrModelRevision}`}
@@ -837,22 +844,26 @@ export function ChannelCredentialFields({
           selectedProtocol={bailianProtocol}
         />
       )}
-      {unifiedBailian && (bailianProtocol === 'dashscope-realtime' || (bailianProtocol === 'auto' && bailianModelSupportsVocabulary(bailianModel))) && (
-        <>
-          <CredentialField
-            key={`${channelId}:vocabulary_id`}
-            label={t('settings.providers.bailianVocabularyIdLabel')}
-            account="asr.vocabulary_id"
-            provider={channelId}
-            mono
-            onUserMutation={onUserMutation}
-            placeholder="vocab-..."
-          />
-          <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ol-ink-4)', lineHeight: 1.6 }}>
-            {t('settings.providers.bailianVocabularyIdNote')}
-          </div>
-        </>
-      )}
+      {unifiedBailian &&
+        (bailianProtocol === 'dashscope-realtime' ||
+          (bailianProtocol === 'auto' && bailianModelSupportsVocabulary(bailianModel))) && (
+          <>
+            <CredentialField
+              key={`${channelId}:vocabulary_id`}
+              label={t('settings.providers.bailianVocabularyIdLabel')}
+              account="asr.vocabulary_id"
+              provider={channelId}
+              mono
+              onUserMutation={onUserMutation}
+              placeholder="vocab-..."
+            />
+            <div
+              style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ol-ink-4)', lineHeight: 1.6 }}
+            >
+              {t('settings.providers.bailianVocabularyIdNote')}
+            </div>
+          </>
+        )}
       {providerType === 'elevenlabs' && (
         <div
           role="note"
@@ -1026,8 +1037,7 @@ function AsrAdvancedOptions({
 // and qwen-audio-3.0-asr-flash are "record then transcribe" (synchronous).
 function bailianModelProtocol(model: string): 'realtime' | 'sync' | 'async' {
   const m = model.trim();
-  if (!m || m.includes('realtime') || m === 'qwen-audio-3.0-asr-flash-streaming')
-    return 'realtime';
+  if (!m || m.includes('realtime') || m === 'qwen-audio-3.0-asr-flash-streaming') return 'realtime';
   // qwen3-asr-flash-filetrans only accepts public URLs and is not supported yet (the backend
   // protocol_for_model rejects it explicitly), so the frontend no longer classifies it as async.
   if (
@@ -1058,12 +1068,22 @@ function bailianModelSupportsVocabulary(model: string): boolean {
 // One-line protocol hint under the model field, resolving "the three model types look
 // identical" — tells the user whether the current model is realtime or record-file and how the
 // behavior differs. Re-reads asr.model on asrModelRevision (model fetch/selection) and mount.
-function BailianProtocolHint({ currentModel, selectedProtocol }: { currentModel: string; selectedProtocol: BailianProtocol }) {
+function BailianProtocolHint({
+  currentModel,
+  selectedProtocol,
+}: {
+  currentModel: string;
+  selectedProtocol: BailianProtocol;
+}) {
   const { t } = useTranslation();
-  const protocol = selectedProtocol === 'auto'
-    ? bailianModelProtocol(currentModel)
-    : selectedProtocol === 'async-transcription' ? 'async'
-      : selectedProtocol.endsWith('realtime') ? 'realtime' : 'sync';
+  const protocol =
+    selectedProtocol === 'auto'
+      ? bailianModelProtocol(currentModel)
+      : selectedProtocol === 'async-transcription'
+        ? 'async'
+        : selectedProtocol.endsWith('realtime')
+          ? 'realtime'
+          : 'sync';
   const hint =
     protocol === 'realtime'
       ? t('settings.providers.bailianModelRealtimeHint')
@@ -1984,12 +2004,7 @@ const iconBtnStyle: CSSProperties = {
     'background 0.16s var(--ol-motion-quick), border-color 0.16s var(--ol-motion-quick), color 0.16s var(--ol-motion-quick), transform 0.12s var(--ol-motion-quick)',
 };
 
-/**
- * Shows a dedicated Omni configuration once the multimodal pipeline is enabled in
- * "Experiments & extensions". Omni uses its own credential namespace and does not participate
- * in ASR/LLM channel ordering; traditional channel config is kept and reused after switching
- * back to the traditional pipeline.
- */
+/** Shows the independent Omni configuration, including while the traditional mode is active. */
 export function OmniChannelSection() {
   const { t } = useTranslation();
   const baseLayoutStack = useLayoutStack();
@@ -2072,133 +2087,70 @@ export function OmniChannelSection() {
     }
   };
 
-  // Recognition pipeline mode: switching only changes the preference, never deletes the other
-  // set of credentials — switching back restores them; the runtime reads only the current mode.
-  const onPipelineModeChange = (mode: 'traditional' | 'multimodal') => {
-    if (!prefs) return;
-    void updatePrefs((current) => ({ ...current, pipelineMode: mode })).catch((error) => {
-      console.error('[settings] failed to update pipeline mode', error);
-      emitSaved('failed', t('common.operationFailed'));
-    });
-  };
-
-  if (prefs?.multimodalPipelineEnabled !== true) return null;
-  const multimodalMode = prefs?.pipelineMode === 'multimodal';
   const omniPreset = omniPresets.find((p) => p.id === committedOmniProvider);
 
   return (
-    <>
-      <div style={{ marginBottom: 12 }}>
-        <SettingRow
-          label={t('settings.providers.pipelineModeLabel')}
-          desc={t('settings.providers.pipelineModeHint')}
-        >
-          <div
-            style={{
-              display: 'flex',
-              gap: 6,
-              alignItems: 'center',
-              flexWrap: layoutStack ? 'wrap' : 'nowrap',
-            }}
-          >
-            <div style={segmentedTrackStyle}>
-              {(['traditional', 'multimodal'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => onPipelineModeChange(mode)}
-                  style={{
-                    padding: '5px 12px',
-                    fontSize: 12,
-                    fontWeight: 500,
-                    border: 0,
-                    borderRadius: 6,
-                    fontFamily: 'inherit',
-                    background:
-                      prefs?.pipelineMode === mode
-                        ? 'var(--ol-segmented-active-bg)'
-                        : 'transparent',
-                    color: prefs?.pipelineMode === mode ? 'var(--ol-ink)' : 'var(--ol-ink-3)',
-                    boxShadow:
-                      prefs?.pipelineMode === mode ? 'var(--ol-segmented-active-shadow)' : 'none',
-                    cursor: 'default',
-                  }}
-                >
-                  {mode === 'traditional'
-                    ? t('settings.providers.pipelineModeTraditional')
-                    : t('settings.providers.pipelineModeMultimodal')}
-                </button>
-              ))}
-            </div>
-          </div>
-        </SettingRow>
-        <div style={{ fontSize: 11, color: 'var(--ol-ink-4)', lineHeight: 1.5, paddingLeft: 2 }}>
-          {t('settings.providers.pipelineIsolationNotice')}
-        </div>
+    <Card>
+      <div style={{ marginBottom: 10 }}>
+        <SectionTitle>{t('settings.providers.omniTitle')}</SectionTitle>
       </div>
-      {multimodalMode && (
-        <Card>
-          <div style={{ marginBottom: 10 }}>
-            <SectionTitle>{t('settings.providers.omniTitle')}</SectionTitle>
-          </div>
-          <SettingRow label={t('settings.providers.providerLabel')}>
-            <SelectLite
-              value={omniProvider}
-              onChange={(next) => onOmniProviderChange(next)}
-              options={omniPresets.map((p) => ({
-                value: p.id,
-                label: t(`settings.providers.presets.${p.nameKey}`),
-              }))}
-              ariaLabel={t('settings.providers.providerLabel')}
-              style={{ ...inputStyle, width: '100%', maxWidth: layoutStack ? '100%' : 200 }}
-            />
-          </SettingRow>
+      <SettingRow label={t('settings.providers.providerLabel')}>
+        <SelectLite
+          value={omniProvider}
+          onChange={(next) => onOmniProviderChange(next)}
+          options={omniPresets.map((p) => ({
+            value: p.id,
+            label: t(`settings.providers.presets.${p.nameKey}`),
+          }))}
+          ariaLabel={t('settings.providers.providerLabel')}
+          style={{ ...inputStyle, width: '100%', maxWidth: layoutStack ? '100%' : 200 }}
+        />
+      </SettingRow>
+      <CredentialField
+        key={`${committedOmniProvider}:api_key`}
+        label={t('settings.providers.apiKeyLabel')}
+        account="omni.api_key"
+        mono
+        mask
+      />
+      <CredentialField
+        key={`${committedOmniProvider}:endpoint`}
+        label={t('settings.providers.baseUrlLabel')}
+        account="omni.endpoint"
+        placeholder={omniPreset?.baseUrl || 'https://your-endpoint/v1'}
+      />
+      {committedOmniProvider === 'custom' && (
+        <>
           <CredentialField
-            key={`${committedOmniProvider}:api_key`}
-            label={t('settings.providers.apiKeyLabel')}
-            account="omni.api_key"
+            key="omni:temperature"
+            label={t('settings.providers.temperatureLabel')}
+            account="omni.temperature"
+            placeholder={t('settings.providers.temperaturePlaceholder')}
+            mono
+          />
+          <CredentialField
+            key="omni:extra_headers"
+            label={t('settings.providers.extraHeadersLabel')}
+            account="omni.extra_headers"
+            placeholder={t('settings.providers.extraHeadersPlaceholder')}
             mono
             mask
           />
-          <CredentialField
-            key={`${committedOmniProvider}:endpoint`}
-            label={t('settings.providers.baseUrlLabel')}
-            account="omni.endpoint"
-            placeholder={omniPreset?.baseUrl || 'https://your-endpoint/v1'}
-          />
-          {committedOmniProvider === 'custom' && (
-            <>
-              <CredentialField
-                key="omni:temperature"
-                label={t('settings.providers.temperatureLabel')}
-                account="omni.temperature"
-                placeholder={t('settings.providers.temperaturePlaceholder')}
-                mono
-              />
-              <CredentialField
-                key="omni:extra_headers"
-                label={t('settings.providers.extraHeadersLabel')}
-                account="omni.extra_headers"
-                placeholder={t('settings.providers.extraHeadersPlaceholder')}
-                mono
-                mask
-              />
-            </>
-          )}
-          <CredentialField
-            key={`${committedOmniProvider}:model:${omniModelRevision}`}
-            label={t('settings.providers.modelLabel')}
-            account="omni.model"
-            placeholder={omniPreset?.modelPlaceholder || 'model-name'}
-            mono
-          />
-          <ProviderTools
-            key={`omni:${committedOmniProvider}`}
-            kind="omni"
-            modelAccount="omni.model"
-            onModelSelected={() => setOmniModelRevision((v) => v + 1)}
-          />
-        </Card>
+        </>
       )}
-    </>
+      <CredentialField
+        key={`${committedOmniProvider}:model:${omniModelRevision}`}
+        label={t('settings.providers.modelLabel')}
+        account="omni.model"
+        placeholder={omniPreset?.modelPlaceholder || 'model-name'}
+        mono
+      />
+      <ProviderTools
+        key={`omni:${committedOmniProvider}`}
+        kind="omni"
+        modelAccount="omni.model"
+        onModelSelected={() => setOmniModelRevision((v) => v + 1)}
+      />
+    </Card>
   );
 }

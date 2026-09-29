@@ -370,7 +370,7 @@ export interface UserPreferences {
   activeLlmProvider: string;
   /** Recognition pipeline mode (experimental, issue #902). In multimodal mode, voice pipelines use the omni config. */
   pipelineMode: PipelineMode;
-  /** Master switch for the experimental multimodal pipeline feature (advanced settings). Default false. */
+  /** Legacy capability gate; the Services pipeline selector enables it when selecting multimodal. */
   multimodalPipelineEnabled: boolean;
   /** Currently active provider id for the multimodal (Omni) model; mirrors credentials vault omni.active. */
   activeOmniProvider: string;

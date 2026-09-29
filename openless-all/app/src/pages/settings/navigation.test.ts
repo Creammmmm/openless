@@ -80,39 +80,28 @@ assert.equal(
 );
 assert.deepEqual(
   visibleAdvancedPages('android', 'android').map((item) => item.id),
-  ['multimodal', 'debug'],
-  'Android keeps its experimental switch and diagnostics without desktop agents',
+  ['debug'],
+  'the pipeline switch lives in Services on every platform',
 );
 console.log('settings navigation tests passed');
 
-const omniViews = availableServiceViews(true, true, true);
+const serviceViews = availableServiceViews(true);
 assert.deepEqual(
-  omniViews,
-  ['omni', 'models', 'connections'],
-  'multimodal exposes its real service configuration instead of empty LLM/ASR pages',
+  serviceViews,
+  ['llm', 'asr', 'omni', 'models', 'connections'],
+  'both pipeline configurations remain visible in the same order',
 );
 assert.equal(
-  resolveServiceView('llm', omniViews),
+  resolveServiceView('llm', serviceViews),
+  'llm',
+  'switching modes keeps the selected traditional configuration visible',
+);
+assert.equal(
+  resolveServiceView('omni', serviceViews),
   'omni',
-  'switching to Omni mode keeps the service editor reachable',
+  'switching modes keeps the selected multimodal configuration visible',
 );
-assert.equal(
-  resolveServiceView('models', omniViews),
-  'models',
-  'pipeline changes do not redirect a user managing local models',
-);
-const enabledTraditionalViews = availableServiceViews(true, false, true);
-assert.deepEqual(
-  enabledTraditionalViews,
-  ['omni', 'llm', 'asr', 'models', 'connections'],
-  'enabling the experiment must surface the Omni view while traditional pages remain',
-);
-assert.equal(
-  resolveServiceView('omni', enabledTraditionalViews),
-  'omni',
-  'the Omni view hosts the pipeline mode switcher',
-);
-const phoneViews = availableServiceViews(false, false, false);
+const phoneViews = availableServiceViews(false);
 assert.equal(
   phoneViews.includes('models'),
   false,
@@ -120,17 +109,17 @@ assert.equal(
 );
 assert.equal(
   phoneViews.includes('omni'),
-  false,
-  'a disabled multimodal pipeline hides the Omni view',
+  true,
+  'the multimodal configuration remains reachable on mobile',
 );
 assert.equal(
   resolveServiceView('models', phoneViews),
   'llm',
   'a no-longer-available page falls back to a working editor',
 );
-assert.equal(
-  resolveServiceView('omni', phoneViews),
-  'llm',
-  'leaving Omni returns to a traditional service',
+assert.deepEqual(
+  phoneViews,
+  ['llm', 'asr', 'omni', 'connections'],
+  'mobile service tabs stay stable',
 );
 console.log('settings service view tests passed');

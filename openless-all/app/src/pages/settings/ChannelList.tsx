@@ -918,9 +918,7 @@ function ChannelTestResult({
   );
 }
 
-/**
- * Provides the LLM/ASR channel lists for settings and onboarding; shows the Omni config when the multimodal pipeline is enabled.
- */
+/** Provides the LLM/ASR channel lists for settings and onboarding. */
 export function ProvidersSection({
   kind = 'all',
   autoCreateWhenEmpty = false,
@@ -930,13 +928,12 @@ export function ProvidersSection({
 } = {}) {
   const { t } = useTranslation();
   const { prefs } = useHotkeySettings();
-  // Multimodal pipeline takeover (issue #902): in multimodal mode the traditional llm/asr channel lists are hidden;
-  // the two credential sets coexist but stay inactive, restored on switch back (same semantics as pre-merge beta).
+  // Onboarding uses the active pipeline; settings can inspect either configuration at any time.
   const multimodalMode =
     prefs?.multimodalPipelineEnabled === true && prefs?.pipelineMode === 'multimodal';
   return (
     <>
-      {kind === 'all' && <OmniChannelSection />}
+      {kind === 'all' && multimodalMode && <OmniChannelSection />}
       {kind === 'all' && !multimodalMode && (
         <div
           style={{ fontSize: 11.5, color: 'var(--ol-ink-4)', lineHeight: 1.6, marginBottom: 10 }}
@@ -944,10 +941,10 @@ export function ProvidersSection({
           {t('settings.providers.credentialStorageNotice')}
         </div>
       )}
-      {!multimodalMode && (kind === 'all' || kind === 'llm') && (
+      {(kind === 'llm' || (kind === 'all' && !multimodalMode)) && (
         <ChannelList kind="llm" autoCreateWhenEmpty={autoCreateWhenEmpty} />
       )}
-      {!multimodalMode && (kind === 'all' || kind === 'asr') && (
+      {(kind === 'asr' || (kind === 'all' && !multimodalMode)) && (
         <ChannelList kind="asr" autoCreateWhenEmpty={autoCreateWhenEmpty} />
       )}
     </>

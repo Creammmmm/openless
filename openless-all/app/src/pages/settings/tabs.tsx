@@ -11,6 +11,7 @@ import { SelectionWorkspaceSection } from './SelectionWorkspaceSection';
 import { LanguageSection } from './LanguageSection';
 import { ThemeSection } from './ThemeSection';
 import { ProvidersSection } from './ChannelList';
+import { OmniChannelSection } from './ProvidersSection';
 import { NetworkSection } from './NetworkSection';
 import { MarketplaceSection } from './MarketplaceSection';
 import { PermissionsSection } from './PermissionsSection';
@@ -19,7 +20,6 @@ import { CloudSyncSection } from './CloudSyncSection';
 import { LocalModelsSection } from './models/LocalModelsSection';
 import { LocalModelsNavContext } from './models/modelsNav';
 import { DebugToolsSection } from './DebugToolsSection';
-import { MultimodalPipelineSection } from './MultimodalPipelineSection';
 import { CodingAgentSection } from './CodingAgentSection';
 import { ClaudeConsoleSection } from './ClaudeConsoleSection';
 import { BetaChannelSection } from './BetaChannelSection';
@@ -29,6 +29,8 @@ import { getPlatformCapabilities } from '../../lib/platform';
 import { listChannels } from '../../lib/ipc';
 import type { PlatformCapabilities } from '../../lib/types';
 import { useHotkeySettings } from '../../state/HotkeySettingsContext';
+import { emitSaved } from '../../lib/savedEvent';
+import { SettingRow, segmentedTrackStyle } from './shared';
 import {
   availableServiceViews,
   resolveServiceView,
@@ -84,18 +86,29 @@ export function AppearanceTab() {
 // AI services & models: organizes channels, local models, and network settings by current pipeline and platform capabilities.
 export function ServicesTab() {
   const { t } = useTranslation();
-  const { prefs } = useHotkeySettings();
+  const { prefs, updatePrefs } = useHotkeySettings();
   const platformCaps = usePlatformCaps();
   const showLocalModel = platformCaps?.supportsLocalAsr === true;
-  const multimodalEnabled = prefs?.multimodalPipelineEnabled === true;
-  const multimodal = multimodalEnabled && prefs.pipelineMode === 'multimodal';
+  const multimodal =
+    prefs?.multimodalPipelineEnabled === true && prefs.pipelineMode === 'multimodal';
   const [view, setView] = useState<ServiceViewId>('llm');
-  const views = availableServiceViews(multimodalEnabled, multimodal, showLocalModel);
+  const views = availableServiceViews(showLocalModel);
   const selectedView = resolveServiceView(view, views);
   const contentRef = useRef<HTMLDivElement>(null);
+  const setPipelineMode = (mode: 'traditional' | 'multimodal') => {
+    if (!prefs || (multimodal ? 'multimodal' : 'traditional') === mode) return;
+    void updatePrefs((current) => ({
+      ...current,
+      pipelineMode: mode,
+      multimodalPipelineEnabled: true,
+    })).catch((error) => {
+      console.error('[settings] failed to update pipeline mode', error);
+      emitSaved('failed', t('common.operationFailed'));
+    });
+  };
 
-  // Language models / speech recognition are required config: the tab carries a status dot — red when
-  // unconfigured, yellow when configured. After any channel add/remove/edit/toggle ChannelList broadcasts
+  // Language models / speech recognition are required config: the active tabs carry a status dot — red when
+  // unconfigured, green when configured. After any channel add/remove/edit/toggle ChannelList broadcasts
   // ol-channels-changed and this recomputes immediately.
   const [requiredConfigured, setRequiredConfigured] = useState<{ llm: boolean; asr: boolean }>({
     llm: false,
@@ -126,15 +139,49 @@ export function ServicesTab() {
 
   return (
     <>
+      <div className="ol-service-pipeline-mode">
+        <SettingRow
+          label={t('settings.providers.pipelineModeLabel')}
+          desc={t('settings.providers.pipelineModeHint')}
+        >
+          <div
+            role="group"
+            aria-label={t('settings.providers.pipelineModeLabel')}
+            style={segmentedTrackStyle}
+          >
+            {(['traditional', 'multimodal'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                disabled={!prefs}
+                aria-pressed={(multimodal ? 'multimodal' : 'traditional') === mode}
+                onClick={() => setPipelineMode(mode)}
+                className="ol-service-pipeline-option"
+              >
+                {t(
+                  `settings.providers.pipelineMode${mode === 'traditional' ? 'Traditional' : 'Multimodal'}`,
+                )}
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+        <p className="ol-service-pipeline-hint">
+          {t('settings.providers.pipelineIsolationNotice')}
+        </p>
+      </div>
       <div
         role="group"
         aria-label={t('modal.serviceViews.label')}
         className="ol-service-views ol-thinscroll"
       >
         {views.map((id) => {
-          const required = id === 'llm' || id === 'asr';
+          const inactive =
+            id === 'omni' ? !multimodal : multimodal && (id === 'llm' || id === 'asr');
+          const required = !inactive && (id === 'llm' || id === 'asr');
           const configured =
             id === 'llm' ? requiredConfigured.llm : id === 'asr' ? requiredConfigured.asr : false;
+          const label = t(`modal.serviceViews.${id}`);
+          const inactiveLabel = t('modal.serviceViews.inactive');
           return (
             <button
               key={id}
@@ -142,22 +189,26 @@ export function ServicesTab() {
               aria-pressed={selectedView === id}
               onClick={() => setView(id)}
               aria-label={
-                required
-                  ? `${t(`modal.serviceViews.${id}`)}。${t(
-                      configured
-                        ? 'modal.serviceViews.statusConfigured'
-                        : 'modal.serviceViews.statusMissing',
-                    )}`
-                  : t(`modal.serviceViews.${id}`)
+                inactive
+                  ? `${label}。${inactiveLabel}`
+                  : required
+                    ? `${label}。${t(
+                        configured
+                          ? 'modal.serviceViews.statusConfigured'
+                          : 'modal.serviceViews.statusMissing',
+                      )}`
+                    : label
               }
               title={
-                required
-                  ? t(
-                      configured
-                        ? 'modal.serviceViews.statusConfigured'
-                        : 'modal.serviceViews.statusMissing',
-                    )
-                  : undefined
+                inactive
+                  ? inactiveLabel
+                  : required
+                    ? t(
+                        configured
+                          ? 'modal.serviceViews.statusConfigured'
+                          : 'modal.serviceViews.statusMissing',
+                      )
+                    : undefined
               }
             >
               {required && (
@@ -167,17 +218,22 @@ export function ServicesTab() {
                   data-state={configured ? 'ok' : 'missing'}
                 />
               )}
-              {t(`modal.serviceViews.${id}`)}
+              {label}
+              {inactive && <span className="ol-service-inactive-tag">{inactiveLabel}</span>}
             </button>
           );
         })}
       </div>
       <div key={selectedView} ref={contentRef} className="ol-service-content">
+        {((selectedView === 'omni' && !multimodal) ||
+          (multimodal && (selectedView === 'llm' || selectedView === 'asr'))) && (
+          <p className="ol-service-inactive-note">{t('modal.serviceViews.inactiveDetail')}</p>
+        )}
         {/* The LocalModelPicker inside the channel editor jumps to this view through this context. */}
         <LocalModelsNavContext.Provider value={() => setView('models')}>
           {selectedView === 'llm' && <ProvidersSection kind="llm" />}
           {selectedView === 'asr' && <ProvidersSection kind="asr" />}
-          {selectedView === 'omni' && <ProvidersSection />}
+          {selectedView === 'omni' && <OmniChannelSection />}
           {selectedView === 'models' && <LocalModelsSection />}
           {selectedView === 'connections' && (
             <>
@@ -283,7 +339,6 @@ export function AdvancedTab({
         >
           {item.id === 'lessComputer' && <CodingAgentSection />}
           {item.id === 'claudeConsole' && <ClaudeConsoleSection />}
-          {item.id === 'multimodal' && <MultimodalPipelineSection />}
           {item.id === 'debug' && <DebugToolsSection />}
         </section>
       ))}

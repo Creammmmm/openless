@@ -807,6 +807,43 @@ html[data-ol-conservative-layout='true'] .ol-conservative-scope .ol-select-lite-
   color: var(--ol-ink);
 }
 
+.ol-service-pipeline-mode {
+  padding: 4px 0 12px;
+}
+
+.ol-service-pipeline-hint {
+  margin: 7px 0 0;
+  color: var(--ol-ink-4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ol-service-pipeline-option {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ol-ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ol-service-pipeline-option[aria-pressed='true'] {
+  background: var(--ol-segmented-active-bg);
+  color: var(--ol-ink);
+  box-shadow: var(--ol-segmented-active-shadow);
+}
+
+.ol-service-pipeline-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ol-service-pipeline-option:focus-visible {
+  outline: 2px solid var(--ol-blue);
+}
+
 .ol-service-views {
   position: sticky;
   top: 0;
@@ -863,6 +900,23 @@ html[data-ol-conservative-layout='true'] .ol-conservative-scope .ol-select-lite-
 .ol-service-views > button:focus-visible {
   outline: 2px solid var(--ol-blue);
   outline-offset: -3px;
+}
+
+.ol-service-inactive-tag {
+  color: var(--ol-ink-4);
+  font-size: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.ol-service-inactive-note {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--ol-surface-2);
+  color: var(--ol-ink-3);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .ol-service-content {
   display: flex;
