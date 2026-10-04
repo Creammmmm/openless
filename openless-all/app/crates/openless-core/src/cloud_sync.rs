@@ -454,7 +454,11 @@ fn validated_native_packs(payload: &CloudSyncPayload) -> Result<Vec<StylePack>, 
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
                 || (pack.kind == StylePackKind::Builtin
-                    && pack.id != crate::builtin_style_pack_id(pack.base_mode))
+                    && !crate::style_packs::builtin_style_packs()
+                        .iter()
+                        .any(|builtin| {
+                            builtin.id == pack.id && builtin.base_mode == pack.base_mode
+                        }))
                 || (pack.kind == StylePackKind::Imported && pack.id.starts_with("builtin."))
             {
                 return Err(invalid_remote());

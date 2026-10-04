@@ -473,12 +473,54 @@ pub fn builtin_style_pack_for_mode(mode: PolishMode) -> StylePack {
     }
 }
 
+/// A conversational template using the existing light-polish execution path.
+fn builtin_chat_style_pack() -> StylePack {
+    let mut pack = builtin_style_pack_for_mode(PolishMode::Light);
+    pack.id = "builtin.chat".into();
+    pack.name = "微信聊天".into();
+    pack.description = "适合微信日常沟通，保留口语和语气，减少多余标点，只做必要整理。".into();
+    pack.author = Some("OpenLess".into());
+    pack.version = "1.0.0".into();
+    pack.prompt = include_str!("prompts/style_chat.md").into();
+    pack.selection_prompt = pack.prompt.clone();
+    pack.tags = vec!["聊天".into(), "口语化".into(), "少标点".into()];
+    pack.examples = vec![
+        StylePackExample {
+            title: Some("约时间".into()),
+            input: "那个我们明天晚上七点见吧不对八点吧还是老地方".into(),
+            output: "我们明天晚上8点见吧 还是老地方".into(),
+        },
+        StylePackExample {
+            title: Some("日常回复".into()),
+            input: "嗯嗯好呀那我到了之后给你发消息哈".into(),
+            output: "嗯嗯好呀 我到了给你发消息哈".into(),
+        },
+        StylePackExample {
+            title: Some("询问近况".into()),
+            input: "你今天忙不忙啊要不要一起吃个饭".into(),
+            output: "你今天忙不忙啊 要不要一起吃个饭？".into(),
+        },
+        StylePackExample {
+            title: Some("保留不同意见".into()),
+            input: "我觉得吧这个可能不太合适要不我们再看看".into(),
+            output: "我觉得这个可能不太合适 要不我们再看看".into(),
+        },
+        StylePackExample {
+            title: Some("保留有效短回复".into()),
+            input: "嗯嗯".into(),
+            output: "嗯嗯".into(),
+        },
+    ];
+    pack
+}
+
 pub fn builtin_style_packs() -> Vec<StylePack> {
     vec![
         builtin_style_pack_for_mode(PolishMode::Raw),
         builtin_style_pack_for_mode(PolishMode::Light),
         builtin_style_pack_for_mode(PolishMode::Structured),
         builtin_style_pack_for_mode(PolishMode::Formal),
+        builtin_chat_style_pack(),
     ]
 }
 

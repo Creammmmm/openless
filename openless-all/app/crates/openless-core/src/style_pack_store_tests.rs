@@ -535,13 +535,13 @@ fn migration_fills_empty_selection_prompts_with_style_defaults() {
         .iter()
         .map(|pack| pack.selection_prompt.as_str())
         .collect();
-    assert_eq!(prompts.len(), 4);
+    assert_eq!(prompts.len(), 5);
     assert_eq!(
         prompts
             .iter()
             .collect::<std::collections::HashSet<_>>()
             .len(),
-        4
+        5
     );
 
     let prompt_for = |mode| {
@@ -640,11 +640,30 @@ fn reconcile_builtin_packs_skips_equal_version_and_adds_missing() {
     let mut packs = builtin_style_packs();
     assert!(!super::reconcile_builtin_packs(&mut packs));
 
-    // Built-in pack missing locally -> all 4 are added back
+    // Built-in pack missing locally -> all builtins are added back
     let mut empty: Vec<StylePack> = Vec::new();
     assert!(super::reconcile_builtin_packs(&mut empty));
-    assert_eq!(empty.len(), 4);
+    assert_eq!(empty.len(), 5);
     assert!(empty
         .iter()
         .all(|p| p.kind == crate::style_packs::StylePackKind::Builtin));
+}
+
+#[test]
+fn chat_template_survives_legacy_migration_and_reset() {
+    let preferences = UserPreferences::default();
+    let mut packs = Vec::new();
+    super::migrate_style_packs_from_preferences(&mut packs, &preferences);
+    let chat = packs.iter().find(|pack| pack.id == "builtin.chat").unwrap();
+    assert!(chat.prompt.contains("微信聊天"));
+    assert_ne!(chat.prompt, preferences.style_system_prompts.light);
+    let store = StylePackStore::in_memory();
+    let reset = store.reset_builtin("builtin.chat").unwrap();
+    assert_eq!(reset.prompt, chat.prompt);
+    assert_eq!(reset.selection_prompt, chat.selection_prompt);
+    assert_eq!(reset.examples.len(), 5);
+    let archive = store.export_zip_bytes("builtin.chat").unwrap();
+    let imported = store.import_from_zip_bytes(&archive).unwrap();
+    assert_eq!(imported.prompt, reset.prompt);
+    assert_eq!(imported.examples, reset.examples);
 }

@@ -15,8 +15,8 @@ use crate::style_pack_archive::{
     StylePackArchiveManifest, MAX_ICON_BYTES,
 };
 use crate::style_packs::{
-    builtin_style_pack_for_mode, builtin_style_pack_id, builtin_style_packs,
-    default_active_style_pack_id, CustomStylePrompts, StylePack, StylePackExample, StylePackKind,
+    builtin_style_pack_id, builtin_style_packs, default_active_style_pack_id, CustomStylePrompts,
+    StylePack, StylePackExample, StylePackKind,
 };
 use crate::types::PolishMode;
 
@@ -577,12 +577,15 @@ impl StylePackStore {
             self.path.as_deref(),
             crate::cloud_sync_e2ee_store::gate::ChangeOrigin::User,
             || {
-                let mode = builtin_mode(id).ok_or_else(|| {
-                    BackendError::new(
-                        BackendErrorCode::InvalidArgument,
-                        "style pack is not builtin",
-                    )
-                })?;
+                let mut reset = builtin_style_packs()
+                    .into_iter()
+                    .find(|pack| pack.id == id)
+                    .ok_or_else(|| {
+                        BackendError::new(
+                            BackendErrorCode::InvalidArgument,
+                            "style pack is not builtin",
+                        )
+                    })?;
                 let mut live = self.lock_for_mutation()?;
                 let mut packs = live.clone();
                 let index = packs
@@ -590,7 +593,6 @@ impl StylePackStore {
                     .position(|pack| pack.id == id)
                     .ok_or_else(|| not_found(id))?;
                 let existing = &packs[index];
-                let mut reset = builtin_style_pack_for_mode(mode);
                 reset.enabled = existing.enabled;
                 reset.created_at = existing.created_at.clone();
                 reset.updated_at = Some(chrono::Utc::now().to_rfc3339());
@@ -894,7 +896,9 @@ pub fn migrate_style_packs_from_preferences(
             }
         } else {
             let mut pack = builtin;
-            pack.prompt = legacy_prompts.for_mode(pack.base_mode).to_string();
+            if pack.id == builtin_style_pack_id(pack.base_mode) {
+                pack.prompt = legacy_prompts.for_mode(pack.base_mode).to_string();
+            }
             pack.enabled = preferences.enabled_modes.contains(&pack.base_mode);
             let now = chrono::Utc::now().to_rfc3339();
             pack.created_at = Some(now.clone());
@@ -959,19 +963,14 @@ fn sort_packs(packs: &mut [StylePack]) {
             PolishMode::Structured => 2,
             PolishMode::Formal => 3,
         };
-        (kind(left), mode(left), &left.name).cmp(&(kind(right), mode(right), &right.name))
+        let additional = |pack: &StylePack| pack.id != builtin_style_pack_id(pack.base_mode);
+        (kind(left), mode(left), additional(left), &left.name).cmp(&(
+            kind(right),
+            mode(right),
+            additional(right),
+            &right.name,
+        ))
     });
-}
-
-fn builtin_mode(id: &str) -> Option<PolishMode> {
-    [
-        PolishMode::Raw,
-        PolishMode::Light,
-        PolishMode::Structured,
-        PolishMode::Formal,
-    ]
-    .into_iter()
-    .find(|mode| builtin_style_pack_id(*mode) == id)
 }
 
 fn version_newer(left: &str, right: &str) -> bool {
@@ -1048,10 +1047,9 @@ fn sync_builtin_style_prompt_preferences(
         PolishMode::Structured,
         PolishMode::Formal,
     ] {
-        let Some(pack) = packs
-            .iter()
-            .find(|pack| pack.kind == StylePackKind::Builtin && pack.base_mode == mode)
-        else {
+        let Some(pack) = packs.iter().find(|pack| {
+            pack.kind == StylePackKind::Builtin && pack.id == builtin_style_pack_id(mode)
+        }) else {
             continue;
         };
         saw_builtin = true;
@@ -1203,7 +1201,7 @@ mod tests {
             uuid::Uuid::new_v4().simple()
         ));
         let store = StylePackStore::at_path(path.clone()).unwrap();
-        assert_eq!(store.list().unwrap().len(), 4);
+        assert_eq!(store.list().unwrap().len(), 5);
         let mut imported = StylePack {
             id: "Builtin.Custom Pack".to_string(),
             name: "  My Pack  ".to_string(),
