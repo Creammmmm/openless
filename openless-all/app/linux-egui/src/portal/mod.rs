@@ -27,6 +27,8 @@ pub struct PortalStatus {
     pub shortcuts: bool,
     pub input: bool,
     pub connecting: bool,
+    #[serde(default)]
+    pub gnome_shortcuts: bool,
     pub message: String,
 }
 
@@ -69,6 +71,7 @@ impl PortalBackend {
         let mut child = Command::new("/usr/bin/python3")
             .args(["-u", "-c", script])
             .arg(data_dir.join("desktop-portal.json"))
+            .arg(std::env::current_exe().map_err(|e| error(e.to_string()))?)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -211,7 +214,17 @@ impl PortalBackend {
 
 impl Drop for PortalBackend {
     fn drop(&mut self) {
+        // Let the helper remove its GNOME fallback shortcuts before terminating.
+        let writer = self.writer.get_mut().unwrap();
+        let _ = writer.write_all(b"{\"op\":\"shutdown\"}\n");
+        let _ = writer.flush();
         let child = self.child.get_mut().unwrap();
+        for _ in 0..20 {
+            if child.try_wait().ok().flatten().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
         let _ = child.kill();
         let _ = child.wait();
         if let Some(reader) = self.reader.take() {

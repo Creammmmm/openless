@@ -2,12 +2,16 @@
 
 ## GNOME / IBus
 
-没有 fcitx5 插件时，Linux 宿主自动选择 Desktop Portal 后端，保留现有 IBus 输入法。运行依赖为 `python3`、`python3-gi`、`gir1.2-glib-2.0`、`xdg-desktop-portal` 和支持 GlobalShortcuts、RemoteDesktop、Clipboard 的桌面后端；Ubuntu GNOME 使用 `xdg-desktop-portal-gnome`。
+没有 fcitx5 插件时，Linux 宿主自动选择 Desktop Portal 后端，保留现有 IBus 输入法。运行依赖为 `python3`、`python3-gi`、`gir1.2-glib-2.0`、`xdg-desktop-portal` 和支持 RemoteDesktop、Clipboard 的桌面后端；Ubuntu GNOME 使用 `xdg-desktop-portal-gnome`。
 
 1. 打开 OpenLess 的 **设置 → 录音与输入 → 桌面语音输入**，点击 **连接 / 重新授权**。
-2. 在系统对话框中允许快捷键、键盘和剪贴板访问。应用不请求屏幕采集。
+2. 在系统对话框中允许键盘和剪贴板访问；支持全局快捷键 Portal 的桌面还会请求快捷键授权。应用不请求屏幕采集。
 3. 将光标放到目标输入框，先完成已有的拼音组词，再使用系统分配的快捷键开始/停止录音。默认请求 `Ctrl+Alt+Space`，取消请求 `Ctrl+Alt+Escape`；实际绑定可通过 **配置系统快捷键** 修改。
 4. 结果以完整文本自动粘贴到处理完成时的当前光标处，并保留在剪贴板中。普通输入框使用 `Ctrl+V`；终端通常选择 `Ctrl+Shift+V`。
+
+Ubuntu 24.04 / GNOME 46 没有全局快捷键 Portal。此时应用在输入权限获准后添加两条 GNOME 自定义快捷键，沿用上述默认按键，不覆盖已有自定义快捷键。点击 **配置系统快捷键** 会打开 GNOME 键盘设置，在自定义快捷键中修改 OpenLess 的按键；如果默认按键与已有系统或自定义快捷键冲突，应用会保留原绑定，并提示在那里为 OpenLess 分配按键。断开连接或正常退出时移除 OpenLess 的激活条目，保留你选定的按键供下次连接使用。快捷键只向运行中的 OpenLess 转发命令，应用退出后不会因残留快捷键而自行录音。
+
+旧版 Portal 缺少应用身份注册接口时使用它自带的客户端识别机制；授权拒绝不会触发降级。新版桌面继续使用 GlobalShortcuts Portal。
 
 该后端采用切换录音和一次性粘贴，不提供原生 IME 提交、逐字流式写入或选区替换。录音和处理过程中请保持输入框焦点；系统确认按键已发送不等于目标应用已接受文本，历史会记录 `PasteSent`。粘贴失败时不自动重发，以免重复输入。拒绝授权仍可使用设置、历史和应用内录音入口。
 
@@ -34,7 +38,21 @@ PY
 
 源码运行的身份文件必须指向已存在的可执行文件；仅复制包含 `Exec=openless` 的打包模板可能无法被桌面识别。如果之前安装了上述用户身份文件，改用 deb 时应移除该文件，让桌面使用包内 `/usr/share/applications/top.openless.OpenLess.desktop`，避免继续引用源码目录。
 
-Ubuntu 安装包可从 `openless-all/app/` 构建：
+### Ubuntu 24.04 兼容包
+
+在 `openless-all/app/` 下执行以下命令（需要 Docker），会用 Ubuntu 24.04 的系统库构建 amd64 包：
+
+```sh
+bash scripts/build-linux-portal-ubuntu24.sh
+```
+
+产物位于 `target/ubuntu24/linux-egui-packages/`，包含 `.deb` 和 `SHA256SUMS`。构建脚本检查实际 ELF 的 glibc 要求不高于 2.39，避免将高版本主机生成的程序误标为 24.04 兼容。系统软件源需提供 GNOME 46 的 Portal 后端、Python/GIO 和运行库；无需 fcitx5。
+
+容器检查能验证依赖安装、二进制加载和兼容逻辑，不能替代目标桌面上的麦克风、快捷键及实际粘贴验收。
+
+### 本机包
+
+仅面向本机系统版本的安装包可从 `openless-all/app/` 构建：
 
 ```sh
 cargo build --locked --release -p openless-linux-egui

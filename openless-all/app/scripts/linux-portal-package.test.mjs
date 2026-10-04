@@ -28,6 +28,15 @@ try {
     OPENLESS_LINUX_VERSION: `${version}-${revision}`,
     OPENLESS_LINUX_INPUT_BACKEND: 'portal',
   });
+  // A compatibility label must never hide a newer ELF requirement.
+  const tooOld = spawnSync('bash', [join(app, 'scripts/package-linux-egui.sh')], {
+    encoding: 'utf8',
+    env: { ...process.env, CARGO_TARGET_DIR: work,
+      OPENLESS_LINUX_VERSION: `${version}-${revision}`,
+      OPENLESS_LINUX_INPUT_BACKEND: 'portal', OPENLESS_LINUX_GLIBC_MAX: '2.0' },
+  });
+  assert.notEqual(tooOld.status, 0);
+  assert.match(tooOld.stderr, /compatibility target is 2.0/);
   const output = join(work, 'linux-egui-packages');
   const files = readdirSync(output);
   assert.equal(files.length, 1);

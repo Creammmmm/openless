@@ -65,7 +65,7 @@ Android IME 通过 `InputConnection` 插入文字；笔画、英文候选与轻�
 
 Tauri 在 `src-tauri/src/coordinator.rs` 构造 Core，`core_adapters.rs` 组装原生依赖并对接已有 persistence。Linux 在 `linux-egui/src/backend.rs` 使用 `LinuxBackendBuilder`，注入音频、凭据、服务、设置、本地 ASR 和平台动作。`BackendConfig` 由 Host 提供数据、缓存、资源路径与平台能力。
 
-Linux 输入支持 fcitx5 与 Desktop Portal 两条宿主路径。未检测到 fcitx5 插件时选择 Portal；`linux-egui/src/portal/mod.rs` 实现 Core 的非流式 `TextInserter`，私有 `bridge.py` 子进程通过系统 Python/GIO 维护授权、快捷键、剪贴板文件描述符和键盘事件。Portal 路径保留 IBus 输入源，通过完整文本粘贴输出，结果使用 `PasteSent` 语义；不会把按键发送成功记作已验证的文本提交。设置页面提供连接、断开和系统快捷键配置，原 fcitx5 快捷键编辑、流式输入及剪贴板恢复控件不适用于该路径。使用与包装见 [Linux 桌面集成](../openless-all/scripts/linux-desktop/README.md)。
+Linux 输入支持 fcitx5 与 Desktop Portal 两条宿主路径。未检测到 fcitx5 插件时选择 Portal；`linux-egui/src/portal/mod.rs` 实现 Core 的非流式 `TextInserter`，私有 `bridge.py` 子进程通过系统 Python/GIO 维护授权、快捷键、剪贴板文件描述符和键盘事件。Portal 路径保留 IBus 输入源，通过完整文本粘贴输出，结果使用 `PasteSent` 语义；不会把按键发送成功记作已验证的文本提交。Ubuntu 24.04 / GNOME 46 缺少全局快捷键 Portal 时，使用受应用管理的 GNOME 自定义快捷键转发 CLI 指令；旧版 Portal 的应用身份注册缺失按接口能力降级。设置页面提供连接、断开和系统快捷键配置，原 fcitx5 快捷键编辑、流式输入及剪贴板恢复控件不适用于该路径。使用与包装见 [Linux 桌面集成](../openless-all/scripts/linux-desktop/README.md)。
 
 业务规则缺失时应修复 Core；平台能力缺失时修复对应 Host。设置值、测试 fixture 或 `Unsupported` 实现不能代表原生能力已就绪。
 

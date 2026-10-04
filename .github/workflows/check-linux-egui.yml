@@ -48,7 +48,7 @@ jobs:
             fcitx5-modules-dev file libasound2-dev libdbus-1-dev \
             libfcitx5config-dev libfcitx5core-dev libfcitx5utils-dev \
             liblzma-dev libpipewire-0.3-dev libpulse-dev libssl-dev \
-            libwayland-dev libx11-dev libxkbcommon-dev pkg-config ripgrep rpm python3-gi
+            libwayland-dev libx11-dev libxkbcommon-dev pkg-config ripgrep rpm python3-gi gnome-settings-daemon-common
 
       - uses: dtolnay/rust-toolchain@stable
         with:

@@ -7632,6 +7632,7 @@ Usage:
 Internal flags (set by OpenLess itself, not for regular use):
   --openless-egui-popup --qa | --capsule | --less-computer
   --ui-client --ui-socket <path>
+  --portal-hotkey --toggle-dictation | --cancel-dictation
 ";
 
     pub fn run() -> Result<(), String> {
@@ -7672,6 +7673,11 @@ Internal flags (set by OpenLess itself, not for regular use):
             BrokerAcquisition::Primary(broker) => Arc::new(broker),
             BrokerAcquisition::Forwarded => return Ok(()),
         };
+        // Legacy GNOME custom shortcuts only forward to a running host. Stale
+        // desktop entries must not start recording or open a window after exit.
+        if args.iter().any(|arg| arg == "--portal-hotkey") {
+            return Ok(());
+        }
         let tray = openless_linux_egui::LinuxTray::start().ok();
         let tray_available = tray.is_some();
         let native = (|| {

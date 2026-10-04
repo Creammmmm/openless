@@ -477,6 +477,9 @@ fn general(ui: &mut egui::Ui, vm: &mut FrontendViewModel, actions: &mut Vec<Fron
     if let Some(status) = &vm.portal_status {
         ui.heading(tr_l10n(vm.lang, "portal.title"));
         ui.label(tr_l10n(vm.lang, "portal.description"));
+        if status.gnome_shortcuts {
+            ui.label(tr_l10n(vm.lang, "portal.gnome_shortcuts"));
+        }
         ui.label(tr_l10n(
             vm.lang,
             if status.input && status.shortcuts {

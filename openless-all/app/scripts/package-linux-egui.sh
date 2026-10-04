@@ -121,6 +121,11 @@ stage_common() {
 if [ "$INPUT_BACKEND" = portal ]; then
   GLIBC_MIN=$(objdump -T "$BINARY" | sed -n 's/.*(GLIBC_\([0-9.]*\)).*/\1/p' | sort -V | tail -n1)
   [[ "$GLIBC_MIN" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo 'Cannot determine glibc requirement' >&2; exit 1; }
+  if [ -n "${OPENLESS_LINUX_GLIBC_MAX:-}" ] &&
+    [ "$(printf '%s\n' "$GLIBC_MIN" "$OPENLESS_LINUX_GLIBC_MAX" | sort -V | tail -n1)" != "$OPENLESS_LINUX_GLIBC_MAX" ]; then
+    echo "Binary requires glibc $GLIBC_MIN; compatibility target is $OPENLESS_LINUX_GLIBC_MAX. Rebuild on the target distribution." >&2
+    exit 1
+  fi
   DEB_ROOT="$TARGET_DIR/linux-egui-portal-deb-root"
   rm -rf "$DEB_ROOT"
   stage_common "$DEB_ROOT"
@@ -133,8 +138,8 @@ Priority: optional
 Architecture: amd64
 Maintainer: OpenLess Contributors
 Description: OpenLess Linux desktop voice input (Desktop Portal)
-Depends: python3, python3-gi, gir1.2-glib-2.0, xdg-desktop-portal, libasound2t64 | libasound2, libbz2-1.0, libc6 (>= $GLIBC_MIN), libdbus-1-3, libegl1, libffi8, libgcc-s1, liblzma5, libpipewire-0.3-0, libpulse0, libstdc++6, libsystemd0, libuuid1, libvulkan1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0
-Recommends: xdg-desktop-portal-gnome, mesa-vulkan-drivers
+Depends: python3, python3-gi, gir1.2-glib-2.0, xdg-desktop-portal (>= 1.18), libasound2t64 | libasound2, libbz2-1.0, libc6 (>= $GLIBC_MIN), libdbus-1-3, libegl1, libffi8, libgcc-s1, liblzma5, libpipewire-0.3-0, libpulse0, libstdc++6, libsystemd0, libuuid1, libvulkan1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0
+Recommends: xdg-desktop-portal-gnome (>= 46), gnome-control-center, mesa-vulkan-drivers
 Homepage: https://github.com/Open-Less/openless
 EOF
   dpkg-deb --build --root-owner-group "$DEB_ROOT" \

@@ -1,6 +1,10 @@
 """Portal lifecycle tests; no desktop session or permission dialogs required."""
 
 import importlib.util
+import os
+
+# These tests must never change the developer's desktop keybindings.
+os.environ["GSETTINGS_BACKEND"] = "memory"
 from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
@@ -14,6 +18,9 @@ SPEC.loader.exec_module(bridge)
 
 def fixture():
     instance = object.__new__(bridge.Bridge)
+    instance.legacy_shortcuts = None
+    instance.legacy_active = False
+    instance.executable = "/usr/bin/openless"
     instance.bus = Mock()
     instance.emit = Mock()
     instance.requests = {}
@@ -139,6 +146,69 @@ class PortalTests(unittest.TestCase):
         self.assertIn("timed out", callback.call_args.args[1])
         self.assertEqual(p.bus.call.call_args.args[1], "/alternate")
 
+    def test_old_portal_without_registry_continues_to_shortcuts(self):
+        p = fixture()
+        p.create_shortcuts = Mock()
+        p.bus.call_finish.side_effect = bridge.GLib.Error(
+            "GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: no Registry"
+        )
+        p.connect()
+        p.bus.call.call_args.args[-1](p.bus, None)
+        self.assertTrue(p.registered)
+        p.create_shortcuts.assert_called_once()
+
+    def test_missing_global_shortcuts_uses_gnome_but_denial_does_not(self):
+        for error, expected in (("org.freedesktop.DBus.Error.UnknownMethod", 1),
+                                ("Desktop permission was cancelled or denied", 0)):
+            p = fixture()
+            p.request = Mock()
+            p.create_legacy_shortcuts = Mock()
+            p.create_shortcuts()
+            p.request.call_args.args[-1](None, error)
+            self.assertEqual(p.create_legacy_shortcuts.call_count, expected)
+
+    def test_gnome_shortcuts_are_not_enabled_before_input_authorization(self):
+        p = fixture()
+        p.create_input = Mock()
+        with patch.object(bridge, "GnomeShortcuts") as shortcuts:
+            p.create_legacy_shortcuts()
+            shortcuts.return_value.enable.assert_not_called()
+        p.create_input.assert_called_once()
+
+    def test_legacy_keys_activate_only_after_keyboard_and_clipboard_are_granted(self):
+        for result, granted in (({"devices": 1, "clipboard_enabled": True}, True),
+                                ({"devices": 1, "clipboard_enabled": False}, False)):
+            p = fixture()
+            p.sessions = {}
+            p.request = Mock()
+            p.call = Mock()
+            p.legacy_shortcuts = Mock()
+            p.create_input()
+            p.request.call_args.args[-1]({"session_handle": "/legacy_input"}, None)
+            p.request.call_args.args[-1]({}, None)
+            p.call.call_args.args[-1](None, None)
+            p.legacy_shortcuts.enable.assert_not_called()
+            p.request.call_args.args[-1](result, None)
+            self.assertEqual(p.legacy_shortcuts.enable.call_count, int(granted))
+            self.assertEqual(p.legacy_active, granted)
+            self.assertEqual("input" in p.sessions, granted)
+
+    def test_disconnect_removes_only_our_legacy_shortcuts(self):
+        p = fixture()
+        p.legacy_shortcuts = Mock()
+        p.legacy_active = True
+        p.disconnect("")
+        p.legacy_shortcuts.disable.assert_called_once()
+        self.assertFalse(p.legacy_active)
+
+    def test_missing_configure_method_opens_gnome_keyboard_settings(self):
+        p = fixture()
+        p.call = Mock()
+        with patch.object(bridge.GnomeShortcuts, "configure") as configure:
+            p.command({"op": "configure"})
+            p.call.call_args.args[-1](None, "org.freedesktop.DBus.Error.UnknownMethod")
+            configure.assert_called_once()
+
     def test_global_shortcut_repeat_is_one_toggle_until_release(self):
         p = fixture()
         args = bridge.GLib.Variant("(osta{sv})", ("/shortcuts", "dictation", 1, {}))
@@ -223,6 +293,59 @@ class PortalTests(unittest.TestCase):
         p.signal(None, None, "/request", bridge.PREFIX + "Request", "Response", args)
         self.assertIn("denied", callback.call_args.args[1])
         self.assertNotIn("/request", p.requests)
+
+
+class GnomeShortcutSettingsTests(unittest.TestCase):
+    def setUp(self):
+        source = bridge.Gio.SettingsSchemaSource.get_default()
+        if not source or not source.lookup(bridge.GnomeShortcuts.SCHEMA, True):
+            self.skipTest("GNOME settings schemas are not installed")
+        with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "ubuntu:GNOME"}):
+            self.shortcuts = bridge.GnomeShortcuts("/usr/bin/true")
+        self.settings = self.shortcuts.settings
+        self.unrelated = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/personal/"
+        self.settings.set_strv("custom-keybindings", [self.unrelated])
+        for _, entry, _, _ in self.shortcuts.entries:
+            for key in ("name", "command", "binding"):
+                entry.reset(key)
+
+    def test_enable_reconnect_disable_preserve_user_entries_and_key_choices(self):
+        self.shortcuts.enable()
+        paths = list(self.settings.get_strv("custom-keybindings"))
+        self.assertEqual(len(paths), 3)
+        self.assertEqual(paths[0], self.unrelated)
+        entry = self.shortcuts.entries[0][1]
+        self.assertIn("--portal-hotkey --toggle-dictation", entry.get_string("command"))
+        entry.set_string("binding", "<Super>F9")
+        self.shortcuts.disable()
+        self.assertEqual(list(self.settings.get_strv("custom-keybindings")), [self.unrelated])
+        self.shortcuts.enable()
+        self.assertEqual(entry.get_string("binding"), "<Super>F9")
+        self.shortcuts.enable()
+        self.assertEqual(len(self.settings.get_strv("custom-keybindings")), 3)
+        self.shortcuts.disable()
+
+    def test_default_shortcut_conflict_preserves_existing_binding(self):
+        other = bridge.Gio.Settings.new_with_path(
+            bridge.GnomeShortcuts.SCHEMA + ".custom-keybinding", self.unrelated
+        )
+        other.set_string("binding", "<Alt><Primary>space")
+        try:
+            self.shortcuts.enable()
+            self.assertEqual(other.get_string("binding"), "<Alt><Primary>space")
+            self.assertEqual(self.shortcuts.entries[0][1].get_string("binding"), "")
+            self.assertTrue(self.shortcuts.needs_bindings())
+            self.shortcuts.disable()
+        finally:
+            other.reset("binding")
+
+    def test_existing_unrelated_command_is_never_overwritten(self):
+        entry = self.shortcuts.entries[0][1]
+        entry.set_string("command", "some-other-program")
+        with self.assertRaises(RuntimeError):
+            self.shortcuts.enable()
+        self.assertEqual(entry.get_string("command"), "some-other-program")
+        self.assertEqual(list(self.settings.get_strv("custom-keybindings")), [self.unrelated])
 
 
 if __name__ == "__main__":
