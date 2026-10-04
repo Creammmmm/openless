@@ -23,6 +23,7 @@ pub struct LinuxNativeRuntime {
     host_actions: std::sync::Arc<LinuxHostActions>,
     broker: Option<std::sync::Arc<SingleInstanceBroker>>,
     hotkeys: Option<Fcitx5HotkeyListener>,
+    portal: Option<std::sync::Arc<crate::portal::PortalBackend>>,
 }
 
 impl LinuxNativeRuntime {
@@ -96,7 +97,20 @@ impl LinuxNativeRuntime {
             host_actions: backend.host_actions,
             broker,
             hotkeys,
+            portal: backend.portal,
         })
+    }
+
+    pub fn portal(&self) -> Option<&std::sync::Arc<crate::portal::PortalBackend>> {
+        self.portal.as_ref()
+    }
+
+    pub fn copy_text(&self, text: &str) -> Result<(), BackendError> {
+        if let Some(portal) = &self.portal {
+            portal.copy_text(text)
+        } else {
+            crate::fcitx5_copy_to_clipboard(text)
+        }
     }
 
     pub fn host(&self) -> &LinuxHost {
@@ -115,13 +129,17 @@ impl LinuxNativeRuntime {
         &self.host_actions
     }
 
-    /// Whether the fcitx5 global-hotkey listener came up.
+    /// Whether a global shortcut session is currently available.
     ///
     /// Tauri hides the 「快捷键」 settings section when the platform has no
     /// desktop hotkey (`visibleSettingsSections(supportsDesktopHotkey)`); the
     /// egui rail needs the same honest answer instead of always showing it.
     pub fn hotkeys_available(&self) -> bool {
         self.hotkeys.is_some()
+            || self
+                .portal
+                .as_ref()
+                .is_some_and(|portal| portal.status().shortcuts)
     }
 
     pub fn drain_native_events(
@@ -139,6 +157,9 @@ impl LinuxNativeRuntime {
             if let Some(error) = broker.take_error() {
                 errors.push(BackendError::new(BackendErrorCode::Platform, error));
             }
+        }
+        if let Some(portal) = &self.portal {
+            portal.drain(|intent| launch_intents.push(intent));
         }
         if let Some(hotkeys) = &self.hotkeys {
             hotkeys.drain(|event| hotkey_events.push(event));
@@ -279,6 +300,7 @@ mod tests {
         let runtime = LinuxNativeRuntime::start(
             LinuxBackendRuntime {
                 backend: Arc::clone(&backend),
+                portal: None,
                 host_actions,
                 settings_runtime: Arc::new(crate::LinuxSettingsRuntime::with_effects(
                     hotkeys.clone(),
@@ -333,6 +355,7 @@ mod tests {
             let result = LinuxNativeRuntime::start(
                 LinuxBackendRuntime {
                     backend: backend.clone(),
+                    portal: None,
                     host_actions: Arc::new(LinuxHostActions::default()),
                     settings_runtime: Arc::new(crate::LinuxSettingsRuntime::with_effects(
                         Arc::new(StartupHotkeys(Default::default(), fail_hotkeys)),

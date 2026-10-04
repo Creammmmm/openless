@@ -6,7 +6,10 @@ VERSION=${OPENLESS_LINUX_VERSION:?OPENLESS_LINUX_VERSION is required}
 # Never silently publish an unnumbered or stale package that apt treats as a
 # downgrade. Each candidate explicitly advances linux-egui/package-revision.
 REVISION=$(< "$APP_ROOT/linux-egui/package-revision")
-[[ "$REVISION" =~ ^[1-9][0-9]*$ ]] || { echo 'invalid Linux package revision' >&2; exit 1; }
+[[ "$REVISION" =~ ^[1-9][0-9]*$ ]] || {
+  echo 'invalid Linux package revision' >&2
+  exit 1
+}
 APP_VERSION=$(node -p "require('$APP_ROOT/package.json').version")
 EXPECTED_VERSION="${APP_VERSION%%+*}-$REVISION"
 if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
@@ -19,6 +22,14 @@ BINARY="$TARGET_DIR/release/openless-linux-egui"
 PLUGIN_ROOT="$APP_ROOT/../scripts/linux-fcitx5-plugin/build"
 PACKAGING="$APP_ROOT/linux-egui/packaging"
 OUTPUT="$TARGET_DIR/linux-egui-packages"
+INPUT_BACKEND=${OPENLESS_LINUX_INPUT_BACKEND:-fcitx5}
+case "$INPUT_BACKEND" in
+  fcitx5 | portal) ;;
+  *)
+    echo 'OPENLESS_LINUX_INPUT_BACKEND must be fcitx5 or portal' >&2
+    exit 1
+    ;;
+esac
 # 图标：与 Tauri 侧共用同一套画（`icon.png` 与 `public/AppIcon.png` 的 md5 相同，
 # 都是 512×512）。但本脚本必须保持 Tauri-free —— 两条契约都会检查脚本里不得出现
 # Tauri 源码树的路径名 —— 所以这里放字节相同的副本，并由 release 契约做逐字节
@@ -36,17 +47,20 @@ HICOLOR_ICONS=(
 test -x "$BINARY"
 test -d "$ICON_DIR"
 for spec in "${HICOLOR_ICONS[@]}"; do test -s "$ICON_DIR/${spec#*:}"; done
-test -s "$PLUGIN_ROOT/libopenless.so"
-test -s "$PLUGIN_ROOT/openless.conf"
+if [ "$INPUT_BACKEND" = fcitx5 ]; then
+  test -s "$PLUGIN_ROOT/libopenless.so"
+  test -s "$PLUGIN_ROOT/openless.conf"
+  command -v rpmbuild > /dev/null
+fi
 test -s "$PACKAGING/openless.desktop"
 test -s "$PACKAGING/top.openless.OpenLess.metainfo.xml"
-command -v dpkg-deb >/dev/null
-command -v rpmbuild >/dev/null
+command -v dpkg-deb > /dev/null
 
 mkdir -p "$OUTPUT"
 
-POST_INSTALL="$TARGET_DIR/openless-fcitx5-postinst"
-cat > "$POST_INSTALL" <<'EOF'
+if [ "$INPUT_BACKEND" = fcitx5 ]; then
+  POST_INSTALL="$TARGET_DIR/openless-fcitx5-postinst"
+  cat > "$POST_INSTALL" << 'EOF'
 #!/usr/bin/env bash
 set +e
 # Package installation runs as root, while fcitx5 belongs to the logged-in
@@ -66,28 +80,32 @@ for bus in /run/user/[0-9]*/bus; do
 done
 exit 0
 EOF
-chmod 0755 "$POST_INSTALL"
+  chmod 0755 "$POST_INSTALL"
 
-# 卸载同样要重启 fcitx5：文件被删掉后，运行中的输入法仍持有旧插件的映像。
-# 用 D-Bus 的 controller Restart（立即返回），**不要**用 `fcitx5 -r`：它会替换 daemon
-# 并一直前台运行，导致 postinst/postrm 每次都要等满 timeout（安装卡顿），还会被 kill 掉新 daemon。
-POST_REMOVE="$TARGET_DIR/openless-fcitx5-postrm"
-sed 's/Package installation runs as root/Package removal runs as root/' \
-  "$POST_INSTALL" > "$POST_REMOVE"
-chmod 0755 "$POST_REMOVE"
+  # 卸载同样要重启 fcitx5：文件被删掉后，运行中的输入法仍持有旧插件的映像。
+  # 用 D-Bus 的 controller Restart（立即返回），**不要**用 `fcitx5 -r`：它会替换 daemon
+  # 并一直前台运行，导致 postinst/postrm 每次都要等满 timeout（安装卡顿），还会被 kill 掉新 daemon。
+  POST_REMOVE="$TARGET_DIR/openless-fcitx5-postrm"
+  sed 's/Package installation runs as root/Package removal runs as root/' \
+    "$POST_INSTALL" > "$POST_REMOVE"
+  chmod 0755 "$POST_REMOVE"
 
-# 插件指纹清单：装完包后一条命令就能核对「系统里的插件 == 包里的插件」。
-PLUGIN_SHA=$(sha256sum "$PLUGIN_ROOT/libopenless.so" | awk '{print $1}')
-PLUGIN_MANIFEST="$TARGET_DIR/openless-fcitx5-manifest"
-cat > "$PLUGIN_MANIFEST" <<EOF
+  # 插件指纹清单：装完包后一条命令就能核对「系统里的插件 == 包里的插件」。
+  PLUGIN_SHA=$(sha256sum "$PLUGIN_ROOT/libopenless.so" | awk '{print $1}')
+  PLUGIN_MANIFEST="$TARGET_DIR/openless-fcitx5-manifest"
+  cat > "$PLUGIN_MANIFEST" << EOF
 openless $VERSION fcitx5-addon-sha256 $PLUGIN_SHA
 EOF
+fi
 
 stage_common() {
   local root=$1
   install -Dm755 "$BINARY" "$root/usr/bin/openless"
   install -Dm644 "$PACKAGING/openless.desktop" \
     "$root/usr/share/applications/openless.desktop"
+  # Stable Portal identity; hide this alias from the application launcher.
+  install -Dm644 "$PACKAGING/top.openless.OpenLess.desktop" \
+    "$root/usr/share/applications/top.openless.OpenLess.desktop"
   install -Dm644 "$PACKAGING/top.openless.OpenLess.metainfo.xml" \
     "$root/usr/share/metainfo/top.openless.OpenLess.metainfo.xml"
   # 多档 hicolor 尺寸：桌面环境按需选档（任务栏 32/48、菜单 64/128、大图标 256/512）。
@@ -98,6 +116,32 @@ stage_common() {
   done
 }
 
+# The Ubuntu/IBus build contains no input-method plugin or fcitx5 maintainer
+# scripts. Its helper uses the distribution's GIO Python bindings.
+if [ "$INPUT_BACKEND" = portal ]; then
+  GLIBC_MIN=$(objdump -T "$BINARY" | sed -n 's/.*(GLIBC_\([0-9.]*\)).*/\1/p' | sort -V | tail -n1)
+  [[ "$GLIBC_MIN" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo 'Cannot determine glibc requirement' >&2; exit 1; }
+  DEB_ROOT="$TARGET_DIR/linux-egui-portal-deb-root"
+  rm -rf "$DEB_ROOT"
+  stage_common "$DEB_ROOT"
+  install -d "$DEB_ROOT/DEBIAN"
+  cat > "$DEB_ROOT/DEBIAN/control" << EOF
+Package: openless
+Version: $VERSION
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: OpenLess Contributors
+Description: OpenLess Linux desktop voice input (Desktop Portal)
+Depends: python3, python3-gi, gir1.2-glib-2.0, xdg-desktop-portal, libasound2t64 | libasound2, libbz2-1.0, libc6 (>= $GLIBC_MIN), libdbus-1-3, libegl1, libffi8, libgcc-s1, liblzma5, libpipewire-0.3-0, libpulse0, libstdc++6, libsystemd0, libuuid1, libvulkan1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0
+Recommends: xdg-desktop-portal-gnome, mesa-vulkan-drivers
+Homepage: https://github.com/Open-Less/openless
+EOF
+  dpkg-deb --build --root-owner-group "$DEB_ROOT" \
+    "$OUTPUT/OpenLess-Linux-portal-${VERSION}-${ARCH}.deb"
+  exit 0
+fi
+
 DEB_ROOT="$TARGET_DIR/linux-egui-deb-root"
 rm -rf "$DEB_ROOT"
 stage_common "$DEB_ROOT"
@@ -106,7 +150,7 @@ install -Dm755 "$PLUGIN_ROOT/libopenless.so" \
 install -Dm644 "$PLUGIN_ROOT/openless.conf" \
   "$DEB_ROOT/usr/share/fcitx5/addon/openless.conf"
 install -d "$DEB_ROOT/DEBIAN"
-cat > "$DEB_ROOT/DEBIAN/control" <<EOF
+cat > "$DEB_ROOT/DEBIAN/control" << EOF
 Package: openless
 Version: $VERSION
 Section: utils
@@ -141,7 +185,7 @@ rm -rf "$RPM_TOP"
 mkdir -p "$RPM_TOP"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS,rpmdb,tmp}
 tar -C "$RPM_ROOT" --transform="s,^\./,openless-$RPM_VERSION/," \
   -czf "$RPM_TOP/SOURCES/openless-$RPM_VERSION.tar.gz" .
-cat > "$RPM_TOP/SPECS/openless.spec" <<EOF
+cat > "$RPM_TOP/SPECS/openless.spec" << EOF
 # Preserve the ELF bytes used by the fcitx5 addon SHA-256 manifest. Fedora's
 # default brp-strip and debuginfo passes otherwise change it after staging.
 %global __os_install_post %{nil}

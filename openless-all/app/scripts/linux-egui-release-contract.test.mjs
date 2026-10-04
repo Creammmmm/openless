@@ -93,7 +93,10 @@ assert.match(verify, /check_elf "\$WORK\/deb\/usr\/bin\/openless"/);
 assert.match(verify, /fcitx5\/libopenless\.so/);
 assert.ok(!existsSync(join(root, 'openless-all/app/linux-egui/src/updater.rs')));
 assert.doesNotMatch(manifest, /minisign-verify/);
-const debDeps = pack.match(/^Depends: ([^\n]+)/m)?.[1].split(/,\s*/) ?? [];
+const debDeps =
+  [...pack.matchAll(/^Depends: ([^\n]+)/gm)]
+    .map((match) => match[1].split(/,\s*/))
+    .find((deps) => deps.includes('fcitx5')) ?? [];
 for (const dep of ['fcitx5', 'libpipewire-0.3-0', 'libegl1', 'liblzma5', 'libwayland-egl1']) {
   assert.ok(debDeps.includes(dep), `deb must require ${dep}`);
 }

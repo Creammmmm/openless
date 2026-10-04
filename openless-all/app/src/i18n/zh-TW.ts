@@ -2253,6 +2253,7 @@ export const zhTW: typeof zhCN = {
       macEventTap: 'macOS Event Tap',
       windowsLowLevel: 'Windows 低層鍵盤 hook',
       fcitx5: 'fcitx5 輸入法外掛',
+      desktopPortal: 'Desktop Portal',
       unavailable: '不可用',
     },
   },

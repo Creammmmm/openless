@@ -23,6 +23,7 @@ mod logging;
 mod popup;
 mod popup_layer;
 mod popup_window;
+pub mod portal;
 mod preference_patch;
 mod qa;
 mod recordings;

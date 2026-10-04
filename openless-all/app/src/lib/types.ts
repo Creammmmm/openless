@@ -177,7 +177,8 @@ export interface HotkeyBinding {
   keys?: HotkeyKey[] | null;
 }
 
-export type HotkeyAdapterKind = 'macEventTap' | 'windowsLowLevel' | 'fcitx5' | 'unavailable';
+export type HotkeyAdapterKind =
+  'macEventTap' | 'windowsLowLevel' | 'fcitx5' | 'desktopPortal' | 'unavailable';
 
 export interface HotkeyCapability {
   adapter: HotkeyAdapterKind;

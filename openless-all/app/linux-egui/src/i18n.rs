@@ -149,6 +149,16 @@ const fn row(
 //     that the zh-CN column is fully populated and that every key actually
 //     referenced resolves.
 pub const CATALOG: &[Msg] = &[
+    Msg { key: "portal.title", text: row("桌面语音输入", "桌面語音輸入", "Desktop dictation", "デスクトップ音声入力", "데스크톱 음성 입력") },
+    Msg { key: "portal.description", text: row("连接后按系统快捷键开始/停止录音，结果自动粘贴到完成时的光标处。请先结束拼音组词，并保持输入框焦点。结果会覆盖剪贴板。", "連接後按系統快捷鍵開始/停止錄音，結果自動貼到完成時的游標處。請先結束拼音組詞並保持輸入框焦點。結果會覆蓋剪貼簿。", "Connect, then use the desktop shortcut to start/stop recording. The result is pasted at the current cursor and replaces the clipboard. Finish any IME composition and keep the input focused.", "接続後、ショートカットで録音を開始・停止します。結果は現在のカーソル位置に貼り付けられ、クリップボードを置き換えます。変換を確定し、入力欄のフォーカスを維持してください。", "연결 후 단축키로 녹음을 시작/중지합니다. 결과는 현재 커서에 붙여넣고 클립보드를 덮어씁니다. 입력기 조합을 완료하고 입력란 포커스를 유지하세요.") },
+    Msg { key: "portal.ready", text: row("已连接", "已連接", "Connected", "接続済み", "연결됨") },
+    Msg { key: "portal.connecting", text: row("请在系统对话框中授权快捷键、键盘和剪贴板访问。", "請在系統對話框中授權快捷鍵、鍵盤和剪貼簿存取。", "Allow shortcuts, keyboard and clipboard access in the desktop dialogs.", "システムのダイアログでショートカット、キーボード、クリップボードを許可してください。", "시스템 대화상자에서 단축키, 키보드 및 클립보드 접근을 허용하세요.") },
+    Msg { key: "portal.disconnected", text: row("尚未连接，转写结果仍保存在历史中。", "尚未連接，轉寫結果仍儲存在歷史中。", "Disconnected. Transcripts remain in history.", "未接続です。文字起こしは履歴に保存されます。", "연결되지 않았습니다. 변환 결과는 기록에 저장됩니다.") },
+    Msg { key: "portal.connect", text: row("连接 / 重新授权", "連接 / 重新授權", "Connect / authorize", "接続 / 許可", "연결 / 허용") },
+    Msg { key: "portal.shortcuts", text: row("配置系统快捷键", "設定系統快捷鍵", "Configure desktop shortcuts", "ショートカット設定", "단축키 설정") },
+    Msg { key: "portal.disconnect", text: row("断开", "中斷連接", "Disconnect", "切断", "연결 해제") },
+    Msg { key: "portal.paste_hint", text: row("普通输入框使用 Ctrl+V；终端通常使用 Ctrl+Shift+V。", "一般輸入框使用 Ctrl+V；終端通常使用 Ctrl+Shift+V。", "Use Ctrl+V for text fields; terminals usually need Ctrl+Shift+V.", "通常は Ctrl+V、端末では通常 Ctrl+Shift+V を使用します。", "텍스트 입력란은 Ctrl+V, 터미널은 일반적으로 Ctrl+Shift+V를 사용합니다.") },
+
     // ---- Shell / navigation ------------------------------------------------
 
     Msg {
@@ -1129,6 +1139,13 @@ pub const CATALOG: &[Msg] = &[
             "fcitx5를 설치하고 시작한 후 OpenLess 애드온과 현재 데스크톱 세션의 D-Bus를 활성화하세요. 필요하면 OpenLess를 다시 설치하세요. 환경을 수정한 후 이 창을 닫고 앱을 다시 시작하세요。",
         ),
     },
+    Msg { key: "startup.recovery_help", text: row(
+        "请关闭此窗口后重新启动 OpenLess。如果仍然失败，请提供上方错误信息和应用日志。",
+        "請關閉此視窗後重新啟動 OpenLess。如果仍然失敗，請提供上方錯誤訊息和應用程式日誌。",
+        "Close this window and restart OpenLess. If it still fails, share the error above and the application logs.",
+        "このウィンドウを閉じて OpenLess を再起動してください。再び失敗する場合は、上記のエラーとアプリのログを共有してください。",
+        "이 창을 닫고 OpenLess를 다시 시작하세요. 계속 실패하면 위 오류와 앱 로그를 공유하세요.",
+    ) },
     Msg { key: "common.saving", text: row("正在保存…", "正在儲存…", "Saving…", "保存中…", "저장 중…") },
     Msg { key: "startup.connecting", text: row("正在连接 OpenLess…", "正在連線 OpenLess…", "Connecting to OpenLess…", "OpenLess に接続中…", "OpenLess에 연결 중…") },
     // ---- Buttons (models / providers / vocab / styles / marketplace / history)

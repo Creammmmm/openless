@@ -31,6 +31,51 @@ pub struct LinuxSettingsRuntime {
     effects: Arc<dyn LinuxSettingsEffects>,
 }
 
+/// Portal shortcuts are chosen by the desktop permission UI. Other effects,
+/// including credentials and autostart, retain the existing transactional path.
+pub(crate) struct PortalSettingsRuntime(pub Arc<dyn SettingsRuntime>);
+
+impl SettingsRuntime for PortalSettingsRuntime {
+    fn prepare(
+        &self,
+        plan: &SettingsEffectPlan,
+    ) -> Result<SettingsEffectReceipt, SettingsEffectFailure> {
+        if plan.hotkeys.as_ref().is_some_and(|change| {
+            // Enabling the Agent also changes this target. It is a feature
+            // preference, not a request to install an unsupported shortcut.
+            let mut previous = change.previous.clone();
+            previous.coding_agent_enabled = change.next.coding_agent_enabled;
+            previous != change.next
+        }) {
+            return Err(SettingsEffectFailure::before_side_effect(
+                BackendError::new(
+                    BackendErrorCode::Unsupported,
+                    "Configure desktop shortcuts in Settings → Desktop input",
+                ),
+            ));
+        }
+        self.0.prepare(plan)
+    }
+
+    fn commit(
+        &self,
+        plan: &SettingsEffectPlan,
+        receipt: &mut SettingsEffectReceipt,
+    ) -> Result<(), SettingsEffectFailure> {
+        let mut plan = plan.clone();
+        plan.hotkeys = None;
+        self.0.commit(&plan, receipt)
+    }
+
+    fn restore(
+        &self,
+        plan: &SettingsEffectPlan,
+        receipt: &SettingsEffectReceipt,
+    ) -> Result<(), BackendError> {
+        self.0.restore(plan, receipt)
+    }
+}
+
 impl LinuxSettingsRuntime {
     /// Build the production fcitx5 + Linux credential-metadata adapter.
     pub fn new(credentials: LinuxCredentialStore) -> Self {
@@ -728,5 +773,56 @@ mod tests {
             tolerate_optional_fcitx_method(Err(error.clone())).unwrap_err(),
             error
         );
+    }
+}
+
+#[cfg(test)]
+mod portal_tests {
+    use super::*;
+    use openless_core::{NoopSettingsRuntime, SettingsValueChange, UserPreferences};
+
+    struct MustNotRegister;
+    impl SettingsRuntime for MustNotRegister {
+        fn commit(
+            &self,
+            plan: &SettingsEffectPlan,
+            _: &mut SettingsEffectReceipt,
+        ) -> Result<(), SettingsEffectFailure> {
+            assert!(
+                plan.hotkeys.is_none(),
+                "Portal must not register fcitx5 hotkeys"
+            );
+            Ok(())
+        }
+    }
+
+    fn plan() -> SettingsEffectPlan {
+        let target = HotkeyRuntimeTarget::from(&UserPreferences::default());
+        SettingsEffectPlan {
+            hotkeys: Some(SettingsValueChange {
+                previous: target.clone(),
+                next: target,
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn portal_startup_and_agent_toggle_do_not_touch_fcitx5() {
+        let runtime = PortalSettingsRuntime(Arc::new(MustNotRegister));
+        let mut plan = plan();
+        let mut receipt = runtime.prepare(&plan).unwrap();
+        runtime.commit(&plan, &mut receipt).unwrap();
+        plan.hotkeys.as_mut().unwrap().next.coding_agent_enabled = true;
+        let mut receipt = runtime.prepare(&plan).unwrap();
+        runtime.commit(&plan, &mut receipt).unwrap();
+    }
+
+    #[test]
+    fn portal_rejects_native_shortcut_edit_before_effects() {
+        let runtime = PortalSettingsRuntime(Arc::new(NoopSettingsRuntime));
+        let mut plan = plan();
+        plan.hotkeys.as_mut().unwrap().next.dictation.primary = "KeyA".into();
+        assert!(runtime.prepare(&plan).is_err());
     }
 }

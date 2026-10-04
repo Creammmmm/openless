@@ -81,20 +81,38 @@ impl LinuxCapabilitySnapshot {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct LinuxPlatformApi {
     capabilities: PlatformCapabilities,
+    portal: Option<std::sync::Arc<crate::portal::PortalBackend>>,
 }
 
 impl LinuxPlatformApi {
     pub fn new(capabilities: PlatformCapabilities) -> Self {
-        Self { capabilities }
+        Self {
+            capabilities,
+            portal: None,
+        }
+    }
+}
+
+impl LinuxPlatformApi {
+    pub fn with_portal(
+        mut self,
+        portal: Option<std::sync::Arc<crate::portal::PortalBackend>>,
+    ) -> Self {
+        self.portal = portal;
+        self
     }
 }
 
 impl PlatformApi for LinuxPlatformApi {
     fn capabilities(&self) -> BoxFuture<'static, Result<PlatformCapabilities, BackendError>> {
-        let capabilities = self.capabilities.clone();
+        let mut capabilities = self.capabilities.clone();
+        if let Some(portal) = &self.portal {
+            capabilities.supports_desktop_hotkey = portal.status().shortcuts;
+            capabilities.supports_ime_input = false;
+        }
         Box::pin(async move { Ok(capabilities) })
     }
 
@@ -164,6 +182,21 @@ impl PlatformApi for LinuxPlatformApi {
     }
 
     fn hotkey_status(&self) -> BoxFuture<'static, Result<HotkeyStatus, BackendError>> {
+        if let Some(portal) = &self.portal {
+            let status = portal.status();
+            return Box::pin(async move {
+                Ok(HotkeyStatus {
+                    adapter: HotkeyAdapterKind::DesktopPortal,
+                    state: if status.shortcuts {
+                        HotkeyStatusState::Installed
+                    } else {
+                        HotkeyStatusState::Failed
+                    },
+                    message: Some(status.message),
+                    last_error: None,
+                })
+            });
+        }
         Box::pin(async {
             #[cfg(target_os = "linux")]
             let ready = tokio::task::spawn_blocking(fcitx5_available)

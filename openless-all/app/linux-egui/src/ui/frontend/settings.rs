@@ -474,6 +474,64 @@ fn advanced_page_title(vm: &FrontendViewModel, lang: Lang) -> Option<(&'static s
 }
 
 fn general(ui: &mut egui::Ui, vm: &mut FrontendViewModel, actions: &mut Vec<FrontendAction>) {
+    if let Some(status) = &vm.portal_status {
+        ui.heading(tr_l10n(vm.lang, "portal.title"));
+        ui.label(tr_l10n(vm.lang, "portal.description"));
+        ui.label(tr_l10n(
+            vm.lang,
+            if status.input && status.shortcuts {
+                "portal.ready"
+            } else if status.connecting {
+                "portal.connecting"
+            } else {
+                "portal.disconnected"
+            },
+        ));
+        if !status.message.is_empty() {
+            ui.label(&status.message);
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(
+                    !status.connecting,
+                    egui::Button::new(tr_l10n(vm.lang, "portal.connect")),
+                )
+                .clicked()
+            {
+                actions.push(FrontendAction::PortalConnect);
+            }
+            if ui
+                .add_enabled(
+                    status.shortcuts,
+                    egui::Button::new(tr_l10n(vm.lang, "portal.shortcuts")),
+                )
+                .clicked()
+            {
+                actions.push(FrontendAction::PortalConfigure);
+            }
+            if ui.button(tr_l10n(vm.lang, "portal.disconnect")).clicked() {
+                actions.push(FrontendAction::PortalDisconnect);
+            }
+        });
+        let previous = vm.portal_paste_shortcut;
+        egui::ComboBox::from_id_salt("portal-paste-shortcut")
+            .selected_text(["Ctrl+V", "Ctrl+Shift+V", "Shift+Insert"][previous.min(2)])
+            .show_ui(ui, |ui| {
+                for (index, label) in ["Ctrl+V", "Ctrl+Shift+V", "Shift+Insert"]
+                    .iter()
+                    .enumerate()
+                {
+                    ui.selectable_value(&mut vm.portal_paste_shortcut, index, *label);
+                }
+            });
+        if previous != vm.portal_paste_shortcut {
+            actions.push(FrontendAction::PortalPasteShortcut(
+                vm.portal_paste_shortcut,
+            ));
+        }
+        ui.label(tr_l10n(vm.lang, "portal.paste_hint"));
+        ui.separator();
+    }
     let lang = vm.lang;
 
     // 录音与输入（Tauri RecordingInputSection）
@@ -482,38 +540,40 @@ fn general(ui: &mut egui::Ui, vm: &mut FrontendViewModel, actions: &mut Vec<Fron
         tr_l10n(lang, "settings.recording.title"),
         tr_l10n(lang, "settings.recording.desc"),
         |ui| {
-            // #2：这一行在 Tauri 里就是 ShortcutRecorder（可展开录制/停用），不是只读
-            // 文本——用户反馈「第一个录音快捷键那里不能展开改快捷键选项」。
-            shortcut_row(
-                ui,
-                vm,
-                actions,
-                &ShortcutRow {
-                    field: ShortcutField::Dictation,
-                    label: tr_l10n(lang, "settings.recording.hotkey_label"),
-                    value: vm.dictation_hotkey.clone(),
-                    can_disable: false,
-                    hint: recording_mode_hint(lang, vm.settings.recording_mode),
-                },
-            );
-            let modes = [
-                tr_l10n(lang, "settings.recording.mode_toggle"),
-                tr_l10n(lang, "settings.recording.mode_hold"),
-                tr_l10n(lang, "settings.recording.mode_auto"),
-            ];
-            segmented_row(
-                ui,
-                tr_l10n(lang, "settings.recording.mode_label"),
-                "",
-                &modes,
-                vm.settings.recording_mode.min(2),
-                |val| {
-                    actions.push(FrontendAction::SettingsCombo(
-                        SettingsComboField::RecordingMode,
-                        val,
-                    ));
-                },
-            );
+            if vm.portal_status.is_none() {
+                // #2：这一行在 Tauri 里就是 ShortcutRecorder（可展开录制/停用），不是只读
+                // 文本——用户反馈「第一个录音快捷键那里不能展开改快捷键选项」。
+                shortcut_row(
+                    ui,
+                    vm,
+                    actions,
+                    &ShortcutRow {
+                        field: ShortcutField::Dictation,
+                        label: tr_l10n(lang, "settings.recording.hotkey_label"),
+                        value: vm.dictation_hotkey.clone(),
+                        can_disable: false,
+                        hint: recording_mode_hint(lang, vm.settings.recording_mode),
+                    },
+                );
+                let modes = [
+                    tr_l10n(lang, "settings.recording.mode_toggle"),
+                    tr_l10n(lang, "settings.recording.mode_hold"),
+                    tr_l10n(lang, "settings.recording.mode_auto"),
+                ];
+                segmented_row(
+                    ui,
+                    tr_l10n(lang, "settings.recording.mode_label"),
+                    "",
+                    &modes,
+                    vm.settings.recording_mode.min(2),
+                    |val| {
+                        actions.push(FrontendAction::SettingsCombo(
+                            SettingsComboField::RecordingMode,
+                            val,
+                        ));
+                    },
+                );
+            }
             // 上游 #1082（稳定模式：先录音后识别）：录音期间不连接 ASR，停止后提交整段
             // 音频；结果更晚，但录音不受建连延迟与网络抖动影响。
             toggle_row(
@@ -667,48 +727,50 @@ fn general(ui: &mut egui::Ui, vm: &mut FrontendViewModel, actions: &mut Vec<Fron
     );
 
     // 插入与剪贴板（Tauri：可折叠分组，含流式输入）
-    card_group(
-        ui,
-        tr_l10n(lang, "settings.recording.insert_group_title"),
-        |ui| {
-            toggle_row(
-                ui,
-                tr_l10n(lang, "settings.recording.restore_clipboard_label"),
-                tr_l10n(lang, "settings.recording.restore_clipboard_desc"),
-                vm.settings.restore_clipboard,
-                || {
-                    actions.push(FrontendAction::SettingsToggle(
-                        SettingsField::RestoreClipboard,
-                    ));
-                },
-            );
-            toggle_row(
-                ui,
-                tr_l10n(lang, "settings.advanced.streaming_insert_label"),
-                tr_l10n(lang, "settings.advanced.streaming_insert_desc"),
-                vm.settings.streaming_insert,
-                || {
-                    actions.push(FrontendAction::SettingsToggle(
-                        SettingsField::StreamingInsert,
-                    ));
-                },
-            );
-            toggle_row(
-                ui,
-                tr_l10n(
-                    lang,
-                    "settings.advanced.streaming_insert_save_clipboard_label",
-                ),
-                "",
-                vm.settings.streaming_save_clipboard,
-                || {
-                    actions.push(FrontendAction::SettingsToggle(
-                        SettingsField::StreamingSaveClipboard,
-                    ));
-                },
-            );
-        },
-    );
+    if vm.portal_status.is_none() {
+        card_group(
+            ui,
+            tr_l10n(lang, "settings.recording.insert_group_title"),
+            |ui| {
+                toggle_row(
+                    ui,
+                    tr_l10n(lang, "settings.recording.restore_clipboard_label"),
+                    tr_l10n(lang, "settings.recording.restore_clipboard_desc"),
+                    vm.settings.restore_clipboard,
+                    || {
+                        actions.push(FrontendAction::SettingsToggle(
+                            SettingsField::RestoreClipboard,
+                        ));
+                    },
+                );
+                toggle_row(
+                    ui,
+                    tr_l10n(lang, "settings.advanced.streaming_insert_label"),
+                    tr_l10n(lang, "settings.advanced.streaming_insert_desc"),
+                    vm.settings.streaming_insert,
+                    || {
+                        actions.push(FrontendAction::SettingsToggle(
+                            SettingsField::StreamingInsert,
+                        ));
+                    },
+                );
+                toggle_row(
+                    ui,
+                    tr_l10n(
+                        lang,
+                        "settings.advanced.streaming_insert_save_clipboard_label",
+                    ),
+                    "",
+                    vm.settings.streaming_save_clipboard,
+                    || {
+                        actions.push(FrontendAction::SettingsToggle(
+                            SettingsField::StreamingSaveClipboard,
+                        ));
+                    },
+                );
+            },
+        );
+    }
 
     // 启动（Tauri：可折叠分组）
     card_group(
@@ -2449,9 +2511,9 @@ fn channel_row(
     lang: Lang,
     actions: &mut Vec<FrontendAction>,
 ) {
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.vertical(|ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new(&channel.name)
                         .size(12.5)
@@ -2495,7 +2557,8 @@ fn channel_row(
                     .color(theme::INK_4),
             );
         });
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.add_space(6.0);
+        ui.horizontal_wrapped(|ui| {
             // 编辑入口：选中渠道后由宿主向 Core 读回该渠道的描述符与凭据形态。
             if ui
                 .add(
@@ -2534,6 +2597,7 @@ fn channel_row(
                 egui::ComboBox::from_id_salt(("settings-channel-provider", index))
                     .selected_text(&channel.provider)
                     .width(150.0)
+                    .truncate()
                     .show_ui(ui, |ui| {
                         for (option_index, provider) in providers.iter().enumerate() {
                             if ui
@@ -2648,7 +2712,7 @@ fn provider_model_block(
     ui.add_space(4.0);
 
     // 模型字段：预设下拉 ⇄ 自定义输入。
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label(
             egui::RichText::new(tr_l10n(lang, "settings.providers.modelLabel"))
                 .size(11.5)
@@ -2665,6 +2729,8 @@ fn provider_model_block(
             let mut pick = editor.model.clone();
             egui::ComboBox::from_id_salt("settings-provider-model-preset")
                 .selected_text(current)
+                .width(ui.available_width().min(360.0))
+                .truncate()
                 .show_ui(ui, |ui| {
                     for option in &options {
                         if ui.selectable_label(current == option, option).clicked() {
@@ -2692,7 +2758,7 @@ fn provider_model_block(
         } else {
             let mut draft = editor.model.clone();
             let id = egui::Id::new("openless-settings-provider-model");
-            if layout::text_input(ui, &mut draft, id, "", 220.0, false).changed() {
+            if layout::text_input(ui, &mut draft, id, "", ui.available_width(), false).changed() {
                 actions.push(FrontendAction::SettingsProviderField(
                     SettingsProviderField::Model,
                     draft,
@@ -2788,11 +2854,11 @@ fn provider_field(
     password: bool,
     actions: &mut Vec<FrontendAction>,
 ) {
-    ui.horizontal(|ui| {
+    ui.vertical(|ui| {
         ui.label(egui::RichText::new(label).size(11.5).color(theme::INK_3));
         let mut draft = value.to_string();
         let id = egui::Id::new(("openless-settings-provider-field", format!("{field:?}")));
-        if layout::text_input(ui, &mut draft, id, "", 220.0, password).changed() {
+        if layout::text_input(ui, &mut draft, id, "", ui.available_width(), password).changed() {
             actions.push(FrontendAction::SettingsProviderField(field, draft));
         }
     });
@@ -2833,7 +2899,8 @@ fn provider_editor_panel(
         .corner_radius(egui::CornerRadius::same(10))
         .inner_margin(egui::Margin::symmetric(12, 10))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new(&editor.provider)
                         .strong()
@@ -2841,9 +2908,11 @@ fn provider_editor_panel(
                         .color(theme::INK),
                 );
                 ui.label(
-                    egui::RichText::new(tr_l10n(lang, "providers.editing"))
-                        .size(10.5)
-                        .color(theme::INK_4),
+                    egui::RichText::new(
+                        tr_l10n(lang, "providers.editing").replace("{}", &editor.name),
+                    )
+                    .size(10.5)
+                    .color(theme::INK_4),
                 );
                 if editor.busy {
                     ui.label(
@@ -2883,7 +2952,7 @@ fn provider_editor_panel(
                 }
                 SettingsProviderAuth::Volcengine => {
                     let mut mode = editor.auth_mode.clone();
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label(egui::RichText::new("Auth").size(11.5).color(theme::INK_3));
                         egui::ComboBox::from_id_salt("settings-provider-auth-mode")
                             .selected_text(&mode)
@@ -2984,7 +3053,7 @@ fn provider_editor_panel(
             }
             provider_model_block(ui, editor, lang, actions);
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if provider_small_button(ui, lang, "btn.save_fields", true) {
                     actions.push(FrontendAction::SettingsProviderSave);
                 }
@@ -3888,6 +3957,79 @@ mod tests {
                 }
             }
             _ => {}
+        }
+    }
+
+    #[test]
+    fn channel_actions_stay_below_details_at_different_widths() {
+        for width in [360.0, 640.0, 900.0] {
+            let ctx = egui::Context::default();
+            let channel = super::super::view_model::SettingsChannel {
+                name: "Qwen-Audio-3.1-ASR".into(),
+                provider: "Alibaba Cloud Qwen3 Realtime ASR".into(),
+                model: "qwen3-asr-flash-realtime".into(),
+                enabled: true,
+                is_active: true,
+                last_check: Some("ASR API key is not configured".into()),
+                ..Default::default()
+            };
+            let mut actions = Vec::new();
+            let output = crate::ui::frontend::run_pass(
+                &ctx,
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(width, 800.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    channel_row(
+                        ui,
+                        &channel,
+                        0,
+                        &[SettingsChannelProvider {
+                            provider_type: "qwen".into(),
+                            label: channel.provider.clone(),
+                        }],
+                        Lang::En,
+                        &mut actions,
+                    )
+                },
+            );
+            let mut texts = Vec::new();
+            fn collect(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+                match shape {
+                    egui::Shape::Text(text) => out.push((
+                        text.galley.text().to_owned(),
+                        text.galley.rect.translate(text.pos.to_vec2()),
+                    )),
+                    egui::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            collect(shape, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for shape in &output.shapes {
+                collect(&shape.shape, &mut texts);
+            }
+            let detail = texts
+                .iter()
+                .find(|(s, _)| s == "ASR API key is not configured")
+                .unwrap()
+                .1;
+            let edit = texts
+                .iter()
+                .find(|(s, _)| s == tr_l10n(Lang::En, "btn.edit"))
+                .unwrap()
+                .1;
+            assert!(
+                edit.top() >= detail.bottom(),
+                "overlap at width {width}: {edit:?}, {detail:?}"
+            );
+            assert!(actions.is_empty());
         }
     }
 

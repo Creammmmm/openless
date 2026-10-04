@@ -2453,6 +2453,7 @@ export const de: typeof zhCN = {
       macEventTap: 'macOS Event Tap',
       windowsLowLevel: 'Windows-Tastaturüberwachung (Low-Level-Hook)',
       fcitx5: 'fcitx5-Eingabemethoden-Plugin',
+      desktopPortal: 'Desktop Portal',
       unavailable: 'Nicht verfügbar',
     },
   },

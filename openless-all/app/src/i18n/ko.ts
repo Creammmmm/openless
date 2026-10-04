@@ -2337,6 +2337,7 @@ export const ko: typeof zhCN = {
       macEventTap: 'macOS Event Tap',
       windowsLowLevel: 'Windows 저수준 키보드 후크',
       fcitx5: 'fcitx5 입력기 플러그인',
+      desktopPortal: 'Desktop Portal',
       unavailable: '사용 불가',
     },
   },

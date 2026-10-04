@@ -2434,6 +2434,7 @@ export const es: typeof zhCN = {
       macEventTap: 'Event Tap de macOS',
       windowsLowLevel: 'Detector de teclado de bajo nivel de Windows',
       fcitx5: 'Complemento de entrada fcitx5',
+      desktopPortal: 'Desktop Portal',
       unavailable: 'No disponible',
     },
   },

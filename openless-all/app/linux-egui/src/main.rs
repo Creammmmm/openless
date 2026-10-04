@@ -37,12 +37,12 @@ mod linux_app {
         save_locale_pref, tr_l10n, CapsuleOutcome, Lang, LocalePref,
     };
     use openless_linux_egui::{
-        drain_events, fcitx5_copy_to_clipboard, notify, open_external, write_jsonl,
-        EventDrainOutcome, Fcitx5HotkeyListener, FcitxPluginInstallPlan, HostToPopup,
-        LinuxBackendBuilder, LinuxCapabilitySnapshot, LinuxHotkeyEvent, LinuxLaunchIntent,
-        LinuxNativeRuntime, LinuxResourceLayout, Notification, PopupActionGuard, PopupChatMessage,
-        PopupKind, PopupState, PopupSupervisor, PopupSupervisorEvent, PopupToHost,
-        SingleInstanceBroker, SingleInstanceRole, POPUP_PROTOCOL_VERSION,
+        drain_events, notify, open_external, write_jsonl, EventDrainOutcome, Fcitx5HotkeyListener,
+        FcitxPluginInstallPlan, HostToPopup, LinuxBackendBuilder, LinuxCapabilitySnapshot,
+        LinuxHotkeyEvent, LinuxLaunchIntent, LinuxNativeRuntime, LinuxResourceLayout, Notification,
+        PopupActionGuard, PopupChatMessage, PopupKind, PopupState, PopupSupervisor,
+        PopupSupervisorEvent, PopupToHost, SingleInstanceBroker, SingleInstanceRole,
+        POPUP_PROTOCOL_VERSION,
     };
     use window::*;
 
@@ -1272,6 +1272,18 @@ mod linux_app {
                 _ => "siri",
             }
             .to_string()
+        }
+
+        fn copy_desktop_text(&self, text: &str) -> Result<(), openless_core::BackendError> {
+            self.native
+                .as_ref()
+                .ok_or_else(|| {
+                    openless_core::BackendError::new(
+                        openless_core::BackendErrorCode::Platform,
+                        "Desktop unavailable",
+                    )
+                })?
+                .copy_text(text)
         }
 
         fn show_capsule_popup(&mut self) {
@@ -2860,6 +2872,16 @@ mod linux_app {
             edges: Vec<(std::time::Instant, openless_linux_egui::LocalHotkeyEdge)>,
         ) -> Vec<LinuxHotkeyEvent> {
             use openless_linux_egui::{LocalHotkey, LocalHotkeyEdgeKind};
+            if self
+                .native
+                .as_ref()
+                .and_then(LinuxNativeRuntime::portal)
+                .is_some()
+            {
+                // The portal already delivers activation while our windows have
+                // focus. Do not also interpret the old fcitx5-local bindings.
+                return Vec::new();
+            }
             let Some(target) = self.hotkey_target() else {
                 return Vec::new();
             };
@@ -3077,7 +3099,7 @@ mod linux_app {
                         continue;
                     }
                     log::info!("[ui-host] launch intent from the user: {intent:?}");
-                    launch_intent_window_requested = true;
+                    launch_intent_window_requested |= matches!(intent, LinuxLaunchIntent::ShowMain);
                     let host = Arc::clone(&host);
                     self.spawn(async move {
                         host.dispatch_launch_intent(intent).await?;
@@ -4012,13 +4034,23 @@ mod linux_app {
                     prefs.pipeline_mode == openless_core::shared_types::PipelineMode::Multimodal;
                 // Linux 宿主没有本地推理引擎。
                 vm.supports_local_asr = false;
-                // 热键后端是否真的起来了：没有 fcitx5 监听器时隐藏「快捷键」分区，
-                // 与 Tauri 的 `visibleSettingsSections(supportsDesktopHotkey)` 一致。
+                // Portal bindings belong to the desktop dialog, not the native
+                // key recorder. Its controls are shown in General instead.
                 vm.hotkeys_supported = self
                     .native
                     .as_ref()
-                    .is_some_and(LinuxNativeRuntime::hotkeys_available);
+                    .is_some_and(|native| native.portal().is_none() && native.hotkeys_available());
+                vm.portal_paste_shortcut = match prefs.paste_shortcut {
+                    openless_core::shared_types::PasteShortcut::CtrlV => 0,
+                    openless_core::shared_types::PasteShortcut::CtrlShiftV => 1,
+                    openless_core::shared_types::PasteShortcut::ShiftInsert => 2,
+                };
                 vm.permissions = permissions;
+                vm.portal_status = self
+                    .native
+                    .as_ref()
+                    .and_then(LinuxNativeRuntime::portal)
+                    .map(|portal| portal.status());
                 vm.selection_polish_hotkey = prefs
                     .selection_polish_hotkey
                     .as_ref()
@@ -4325,7 +4357,11 @@ mod linux_app {
                 },
                 accessibility: PermissionState::Unsupported,
                 network: PermissionState::Unsupported,
-                hotkey: if self.native.is_some() {
+                hotkey: if self
+                    .native
+                    .as_ref()
+                    .is_some_and(LinuxNativeRuntime::hotkeys_available)
+                {
                     PermissionState::Granted
                 } else {
                     PermissionState::Unknown
@@ -4360,6 +4396,43 @@ mod linux_app {
                             // The list is fetched lazily; entering the page is what
                             // triggers the first load.
                             self.load_marketplace();
+                        }
+                    }
+                    frontend::view_model::FrontendAction::PortalPasteShortcut(index) => {
+                        if let Some(preferences) = self.preferences.as_mut() {
+                            preferences.paste_shortcut = match index {
+                                1 => openless_core::shared_types::PasteShortcut::CtrlShiftV,
+                                2 => openless_core::shared_types::PasteShortcut::ShiftInsert,
+                                _ => openless_core::shared_types::PasteShortcut::CtrlV,
+                            };
+                            self.save_settings_if_dirty();
+                        }
+                    }
+                    frontend::view_model::FrontendAction::PortalConnect => {
+                        if let Some(portal) =
+                            self.native.as_ref().and_then(LinuxNativeRuntime::portal)
+                        {
+                            if let Err(error) = portal.connect() {
+                                self.status = error.to_string();
+                            }
+                        }
+                    }
+                    frontend::view_model::FrontendAction::PortalConfigure => {
+                        if let Some(portal) =
+                            self.native.as_ref().and_then(LinuxNativeRuntime::portal)
+                        {
+                            if let Err(error) = portal.configure_shortcuts() {
+                                self.status = error.to_string();
+                            }
+                        }
+                    }
+                    frontend::view_model::FrontendAction::PortalDisconnect => {
+                        if let Some(portal) =
+                            self.native.as_ref().and_then(LinuxNativeRuntime::portal)
+                        {
+                            if let Err(error) = portal.disconnect() {
+                                self.status = error.to_string();
+                            }
                         }
                     }
                     frontend::view_model::FrontendAction::ToggleSettings => {
@@ -4561,9 +4634,19 @@ mod linux_app {
                     }
                     frontend::view_model::FrontendAction::MarketplaceAuthCopyCode => {
                         if !self.frontend_vm.marketplace_oauth_user_code.is_empty() {
-                            if let Err(error) = fcitx5_copy_to_clipboard(
-                                &self.frontend_vm.marketplace_oauth_user_code,
-                            ) {
+                            if let Err(error) = self
+                                .native
+                                .as_ref()
+                                .ok_or_else(|| {
+                                    openless_core::BackendError::new(
+                                        openless_core::BackendErrorCode::Platform,
+                                        "Desktop unavailable",
+                                    )
+                                })
+                                .and_then(|native| {
+                                    native.copy_text(&self.frontend_vm.marketplace_oauth_user_code)
+                                })
+                            {
                                 self.frontend_vm.marketplace_oauth_error = Some(error.to_string());
                             }
                         }
@@ -7596,18 +7679,35 @@ Internal flags (set by OpenLess itself, not for regular use):
             if let Err(error) = openless_linux_egui::init_file_logger(&config.data_dir) {
                 eprintln!("OpenLess file logger unavailable: {error}");
             }
-            ensure_fcitx5_ready(&config)?;
-            let hotkeys = Some(Fcitx5HotkeyListener::start().map_err(|error| error.to_string())?);
+            let use_portal = openless_linux_egui::portal::use_portal_backend()
+                .map_err(|error| error.to_string())?;
+            let (hotkeys, portal) = if use_portal {
+                (
+                    None,
+                    Some(
+                        openless_linux_egui::portal::PortalBackend::start(&config.data_dir)
+                            .map_err(|error| error.to_string())?,
+                    ),
+                )
+            } else {
+                ensure_fcitx5_ready(&config)?;
+                (
+                    Some(Fcitx5HotkeyListener::start().map_err(|error| error.to_string())?),
+                    None,
+                )
+            };
             config.platform = LinuxCapabilitySnapshot::detect(tray_available).capabilities;
             let backend = {
                 // Construction captures the existing executor for cpal/native
                 // callbacks. The GUI thread leaves its context before block_on;
                 // no extra runtime or per-callback runtime is created.
                 let _runtime_context = tokio.enter();
-                LinuxBackendBuilder::from_shared_providers(config)
-                    .map_err(|error| error.to_string())?
-                    .build()
-                    .map_err(|error| error.to_string())?
+                let mut builder = LinuxBackendBuilder::from_shared_providers(config)
+                    .map_err(|error| error.to_string())?;
+                if let Some(portal) = portal {
+                    builder = builder.with_portal(portal);
+                }
+                builder.build().map_err(|error| error.to_string())?
             };
             tokio
                 .block_on(LinuxNativeRuntime::start(

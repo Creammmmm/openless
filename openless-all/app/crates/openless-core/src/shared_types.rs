@@ -2039,6 +2039,7 @@ pub enum HotkeyAdapterKind {
     MacEventTap,
     WindowsLowLevel,
     Fcitx5,
+    DesktopPortal,
     /// Mobile platforms do not expose desktop global hotkey adapters.
     Unavailable,
 }
@@ -2049,6 +2050,7 @@ impl HotkeyAdapterKind {
             HotkeyAdapterKind::MacEventTap => "macOS Event Tap",
             HotkeyAdapterKind::WindowsLowLevel => "Windows 低层键盘 hook",
             HotkeyAdapterKind::Fcitx5 => "fcitx5 输入法插件",
+            HotkeyAdapterKind::DesktopPortal => "Desktop Portal",
             HotkeyAdapterKind::Unavailable => "不可用",
         }
     }

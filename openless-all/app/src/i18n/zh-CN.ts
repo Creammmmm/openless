@@ -2254,6 +2254,7 @@ export const zhCN = {
       macEventTap: 'macOS Event Tap',
       windowsLowLevel: 'Windows 低层键盘 hook',
       fcitx5: 'fcitx5 输入法插件',
+      desktopPortal: 'Desktop Portal',
       unavailable: '不可用',
     },
   },

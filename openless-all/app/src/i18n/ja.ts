@@ -2356,6 +2356,7 @@ export const ja: typeof zhCN = {
       macEventTap: 'macOS Event Tap',
       windowsLowLevel: 'Windows 低レベルキーボードフック',
       fcitx5: 'fcitx5 インプットメソッドプラグイン',
+      desktopPortal: 'Desktop Portal',
       unavailable: '利用不可',
     },
   },

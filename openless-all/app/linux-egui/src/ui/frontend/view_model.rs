@@ -30,6 +30,10 @@ pub enum FrontendAction {
     Navigate(Page),
     /// Open / close the in-window settings overlay.
     ToggleSettings,
+    PortalConnect,
+    PortalConfigure,
+    PortalDisconnect,
+    PortalPasteShortcut(usize),
     /// Close the settings overlay (from the × button).
     CloseSettings,
     /// Marketplace search query changed.
@@ -815,6 +819,10 @@ pub struct FrontendViewModel {
     /// Defaults to true so pure-rendering callers (and the common case where the
     /// host did start the listener) keep the section visible.
     pub hotkeys_supported: bool,
+    #[serde(default)]
+    pub portal_status: Option<openless_linux_egui::portal::PortalStatus>,
+    #[serde(default)]
+    pub portal_paste_shortcut: usize,
     /// 展开编辑菜单的快捷键行（`None` = 都收起）。
     pub shortcut_menu: Option<ShortcutField>,
     /// 正在录入按键的快捷键行（`None` = 未在录入）。
@@ -1017,6 +1025,8 @@ impl Default for FrontendViewModel {
             supports_local_asr: false,
             multimodal_view: false,
             hotkeys_supported: true,
+            portal_status: None,
+            portal_paste_shortcut: 0,
             shortcut_menu: None,
             shortcut_recording: None,
             style_hotkey_draft_open: false,

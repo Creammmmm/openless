@@ -41,8 +41,9 @@ if ($linuxManifest -match 'legacy-preferences-write' -or $coreManifest -match 'l
 
 if ($mainSource -notmatch 'SingleInstanceBroker::acquire_or_forward' -or
     $mainSource -notmatch 'Fcitx5HotkeyListener::start' -or
+    $mainSource -notmatch 'PortalBackend::start' -or
     $mainSource -notmatch 'drain_native_events()') {
-    Write-Error "Linux eframe production UI must wire single-instance and fcitx5 native events"
+    Write-Error "Linux eframe production UI must wire single-instance, fcitx5 and Portal native events"
     exit 1
 }
 if ($mainSource -match 'LinuxNativeRuntime::start(backend,s*None,s*None)') {

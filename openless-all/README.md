@@ -24,6 +24,8 @@ npm run tauri dev
 
 ## Shared backend and Linux host
 
+Ubuntu GNOME users can keep IBus and use the Desktop Portal input backend. When the fcitx5 addon is unavailable, the app opens normally; connect desktop input from Settings → General to authorize shortcuts, keyboard and clipboard access. See [Linux desktop integration](scripts/linux-desktop/README.md) for usage, limitations and the Ubuntu package command.
+
 This repository supplies the shared typed Rust interface, semantic events, fixtures, and Linux adapters. `linux-egui/src/main.rs` now implements an egui/eframe application, with `LinuxHost` and `LinuxBackendBuilder` connecting it to Core. Remaining Host/UI work and product acceptance are tracked in the [Linux handoff](../docs/linux-egui-handoff/README.md).
 
 ```bash

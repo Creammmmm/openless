@@ -666,11 +666,13 @@ impl eframe::App for StartupErrorApp {
         if focus {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
         }
+        ui.painter()
+            .rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill);
         ui.heading(tr_l10n(self.lang, "status.startup_failed"));
         ui.add_space(12.0);
         ui.label(&self.error);
         ui.add_space(12.0);
-        ui.label(tr_l10n(self.lang, "startup.fcitx_help"));
+        ui.label(tr_l10n(self.lang, "startup.recovery_help"));
         if ui.button(tr_l10n(self.lang, "common.close")).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }

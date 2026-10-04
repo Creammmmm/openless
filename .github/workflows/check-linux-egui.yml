@@ -48,7 +48,7 @@ jobs:
             fcitx5-modules-dev file libasound2-dev libdbus-1-dev \
             libfcitx5config-dev libfcitx5core-dev libfcitx5utils-dev \
             liblzma-dev libpipewire-0.3-dev libpulse-dev libssl-dev \
-            libwayland-dev libx11-dev libxkbcommon-dev pkg-config ripgrep rpm
+            libwayland-dev libx11-dev libxkbcommon-dev pkg-config ripgrep rpm python3-gi
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -111,6 +111,8 @@ jobs:
           cargo check --locked -p openless-linux-egui --all-targets
           node scripts/linux-egui-tauri-free-contract.test.mjs
           node scripts/linux-egui-release-contract.test.mjs
+          /usr/bin/python3 linux-egui/tests/portal_bridge_test.py
+          node scripts/linux-portal-package.test.mjs
           node scripts/ci-changed-areas.test.mjs
           node scripts/tauri-linux-free-contract.test.mjs
           pwsh -NoProfile -File ./scripts/check-core-deps.ps1

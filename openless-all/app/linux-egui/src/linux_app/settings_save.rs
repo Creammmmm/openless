@@ -600,7 +600,7 @@ impl OpenLessEguiApp {
                     .as_ref()
                     .and_then(|(status, _)| status.ca_fingerprint_sha256.clone());
                 match fingerprint {
-                    Some(fingerprint) => match fcitx5_copy_to_clipboard(&fingerprint) {
+                    Some(fingerprint) => match self.copy_desktop_text(&fingerprint) {
                         Ok(()) => {
                             self.frontend_vm.settings_notice =
                                 Some(tr_l10n(self.lang, "status.copied").to_string());
@@ -638,7 +638,7 @@ impl OpenLessEguiApp {
                 let _ = open_external("https://github.com/earendil-works/openless/issues");
             }
             frontend::view_model::SettingsActionField::CopyQQ => {
-                match fcitx5_copy_to_clipboard("1078960553") {
+                match self.copy_desktop_text("1078960553") {
                     Ok(()) => {
                         self.frontend_vm.settings_notice =
                             Some(tr_l10n(self.lang, "status.copied").to_string());

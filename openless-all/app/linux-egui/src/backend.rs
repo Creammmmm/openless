@@ -22,6 +22,7 @@ pub struct LinuxBackendRuntime {
     pub backend: Arc<OpenLessBackend>,
     pub host_actions: Arc<LinuxHostActions>,
     pub settings_runtime: Arc<dyn SettingsRuntime>,
+    pub portal: Option<Arc<crate::portal::PortalBackend>>,
 }
 
 /// Own the executor handle, not the executor. cpal and native teardown may call
@@ -65,6 +66,7 @@ pub struct LinuxBackendBuilder {
     settings_runtime: Option<Arc<dyn SettingsRuntime>>,
     polish_failure_policy: PolishFailurePolicy,
     task_spawner: Option<Arc<dyn openless_core::TaskSpawner>>,
+    portal: Option<Arc<crate::portal::PortalBackend>>,
 }
 
 impl LinuxBackendBuilder {
@@ -161,6 +163,7 @@ impl LinuxBackendBuilder {
             settings_runtime: None,
             polish_failure_policy: PolishFailurePolicy::UseRawText,
             task_spawner: None,
+            portal: None,
         }
     }
 
@@ -178,6 +181,16 @@ impl LinuxBackendBuilder {
 
     pub fn with_auxiliary_polisher(mut self, polisher: Arc<dyn TextPolisher>) -> Self {
         self.auxiliary_polisher = Some(polisher);
+        self
+    }
+
+    pub fn with_portal(mut self, portal: Arc<crate::portal::PortalBackend>) -> Self {
+        self.config.platform.supports_ime_input = false;
+        self.config.platform.supports_desktop_hotkey = portal.status().shortcuts;
+        self.text_inserter = Some(Arc::new(crate::portal::PortalTextInserter(Arc::clone(
+            &portal,
+        ))));
+        self.portal = Some(portal);
         self
     }
 
@@ -238,9 +251,14 @@ impl LinuxBackendBuilder {
                 )
             }
         };
-        let settings_runtime = self.settings_runtime.unwrap_or(default_settings_runtime);
+        let mut settings_runtime = self.settings_runtime.unwrap_or(default_settings_runtime);
+        if self.portal.is_some() {
+            settings_runtime = Arc::new(crate::settings::PortalSettingsRuntime(settings_runtime));
+        }
         let mut services = self.services.unwrap_or_else(BackendServices::unsupported);
-        services.platform = Arc::new(LinuxPlatformApi::new(self.config.platform.clone()));
+        services.platform = Arc::new(
+            LinuxPlatformApi::new(self.config.platform.clone()).with_portal(self.portal.clone()),
+        );
         let host_actions = self
             .host_actions
             .unwrap_or_else(|| Arc::new(LinuxHostActions::default()));
@@ -290,8 +308,12 @@ impl LinuxBackendBuilder {
                 // adapter instead of fabricating a local capability.
                 local_asr_runtime: None,
                 marketplace_config: self.marketplace_config,
-                selection_runtime: Some(Arc::new(LinuxSelectionRuntime::new())),
-                selection_polisher: Some(selection_polisher),
+                selection_runtime: if self.portal.is_some() {
+                    None
+                } else {
+                    Some(Arc::new(LinuxSelectionRuntime::new()))
+                },
+                selection_polisher: self.portal.is_none().then_some(selection_polisher),
                 qa_runtime: Some(qa_runtime),
             },
             repositories,
@@ -301,6 +323,7 @@ impl LinuxBackendBuilder {
             backend,
             host_actions,
             settings_runtime,
+            portal: self.portal,
         })
     }
 }
@@ -316,6 +339,32 @@ mod tests {
     };
 
     use super::*;
+
+    #[tokio::test]
+    async fn portal_host_starts_without_fcitx5_or_selection_adapter() {
+        let data = tempfile::tempdir().unwrap();
+        let runtime = LinuxBackendBuilder::new(
+            BackendConfig {
+                data_dir: data.path().to_path_buf(),
+                ..Default::default()
+            },
+            Arc::new(FixtureTranscriptionEngine::successful("hello", 100)),
+            Arc::new(FixtureTextPolisher::successful("Hello.")),
+        )
+        .with_credential_store(Arc::new(InMemoryCredentialStore::default()))
+        .with_recorder(Arc::new(FixtureAudioRecorder::new(Vec::new(), Vec::new())))
+        .with_portal(crate::portal::PortalBackend::fixture())
+        .build()
+        .unwrap();
+        // Exercise the production runtime: this used to register fcitx5 hotkeys
+        // unconditionally, and Core also requires selection dependencies as a pair.
+        let host = crate::LinuxNativeRuntime::start(runtime, None, None)
+            .await
+            .unwrap();
+        assert!(host.host().backend().snapshot().running);
+        assert!(!host.hotkeys_available(), "permission has not been granted");
+        host.shutdown().await.unwrap();
+    }
 
     #[test]
     fn builder_requires_an_executor_before_opening_stores() {

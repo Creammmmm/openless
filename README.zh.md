@@ -276,6 +276,8 @@ OpenLess 只做一件事:**把语音变成可用的书面文字(尤其是 AI 提
 
 Rust 1.88 是桌面应用源码（`openless-core`、`src-tauri`）所支持的最低工具链版本；建议使用最新 stable Rust。CI 在 macOS 与 Windows 上同时验证 Rust 1.88 与 stable；Linux egui 宿主需要 Rust 1.95，按 stable 验证。
 
+Ubuntu GNOME / IBus 用户可以保留现有拼音输入法：没有 fcitx5 插件时，Linux 版使用 Desktop Portal。在 **设置 → 录音与输入 → 桌面语音输入** 中授权快捷键、键盘和剪贴板后，按快捷键切换录音，结果整段粘贴到当前光标处。使用边界、运行依赖及不安装 fcitx5 的 Ubuntu deb 构建命令见 [Linux 桌面集成](openless-all/scripts/linux-desktop/README.md)。
+
 Apple Silicon 编译可选的 Qwen3-ASR MLX 后端时需要 Xcode 的 MetalToolchain 组件。执行 `xcodebuild -downloadComponent MetalToolchain` 安装，并用 `xcrun --find metal` 验证。它只属于源码构建依赖，已打包的 OpenLess 应用运行时不需要该组件。
 
 ```bash
