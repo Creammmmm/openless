@@ -1042,227 +1042,233 @@ pub fn dictation_capsule(
     state: &CapsulePopupState,
     lang: Lang,
 ) -> CapsuleAction {
-    let mut action = CapsuleAction::None;
-    let phase = state.phase.to_ascii_lowercase();
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
-        .show(root_ui, |ui| {
-            // 胶囊进程的首帧预热（同 QA 面板；录音环与 Siri 波都是 GPU 路径）。
-            // Tauri `capsuleStyle`：siri = 流光药丸（GPU 波/环），classic = 经典药丸 +
-            // 五根音量条，typeless = 176×64 深色胶囊 + 11 根波形。
-            let style = state.style.as_str();
-            let typeless = style == "typeless";
-            // 未知/空值走 siri（默认样式），只有显式选择 classic 才关掉 GPU 光效。
-            let use_gpu = !typeless && style != "classic";
-            let (pill_width, pill_height, button, bar_count) = if typeless {
-                (TYPELESS_WIDTH, TYPELESS_HEIGHT, TYPELESS_BUTTON, 11)
-            } else {
-                (PILL_WIDTH, PILL_HEIGHT, ROUND_BUTTON, 5)
-            };
-            let siri = use_gpu;
-            let (pill_bg, pill_border, pill_ink) = if typeless {
-                (TYPELESS_BG, TYPELESS_BORDER, TYPELESS_INK)
-            } else if siri {
-                (
-                    egui::Color32::TRANSPARENT,
-                    egui::Color32::TRANSPARENT,
-                    theme::INK_2,
-                )
-            } else {
-                (theme::SURFACE, theme::LINE, theme::INK_2)
-            };
-            // Tauri 经典药丸宿主：窗口高 100，药丸水平居中、距底 16，徽章再上移 8。
-            let available = ui.available_rect_before_wrap();
-            let rect = egui::Rect::from_min_size(
-                egui::pos2(
-                    available.center().x - pill_width / 2.0,
-                    available.bottom() - CAPSULE_BOTTOM_INSET - pill_height,
-                ),
-                egui::vec2(pill_width, pill_height),
+        .show(root_ui, |ui| capsule_contents(ui, state, lang))
+        .inner
+}
+
+/// Paint inside the supplied local bounds, shared by the desktop popup and
+/// the main window indicator. This must not create another CentralPanel.
+pub fn capsule_contents(ui: &mut egui::Ui, state: &CapsulePopupState, lang: Lang) -> CapsuleAction {
+    let mut action = CapsuleAction::None;
+    let phase = state.phase.to_ascii_lowercase();
+    if matches!(
+        phase.as_str(),
+        "starting" | "recording" | "transcribing" | "polishing" | "inserting"
+    ) {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(16));
+    }
+    // 胶囊进程的首帧预热（同 QA 面板；录音环与 Siri 波都是 GPU 路径）。
+    // Tauri `capsuleStyle`：siri = 流光药丸（GPU 波/环），classic = 经典药丸 +
+    // 五根音量条，typeless = 176×64 深色胶囊 + 11 根波形。
+    let style = state.style.as_str();
+    let typeless = style == "typeless";
+    // 未知/空值走 siri（默认样式），只有显式选择 classic 才关掉 GPU 光效。
+    let use_gpu = !typeless && style != "classic";
+    let (pill_width, pill_height, button, bar_count) = if typeless {
+        (TYPELESS_WIDTH, TYPELESS_HEIGHT, TYPELESS_BUTTON, 11)
+    } else {
+        (PILL_WIDTH, PILL_HEIGHT, ROUND_BUTTON, 5)
+    };
+    let siri = use_gpu;
+    let (pill_bg, pill_border, pill_ink) = if typeless {
+        (TYPELESS_BG, TYPELESS_BORDER, TYPELESS_INK)
+    } else if siri {
+        (
+            egui::Color32::TRANSPARENT,
+            egui::Color32::TRANSPARENT,
+            theme::INK_2,
+        )
+    } else {
+        (theme::SURFACE, theme::LINE, theme::INK_2)
+    };
+    // Tauri 经典药丸宿主：窗口高 100，药丸水平居中、距底 16，徽章再上移 8。
+    let available = ui.available_rect_before_wrap();
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(
+            available.center().x - pill_width / 2.0,
+            available.bottom() - CAPSULE_BOTTOM_INSET - pill_height,
+        ),
+        egui::vec2(pill_width, pill_height),
+    );
+    let _ = ui.allocate_rect(rect, egui::Sense::hover());
+    if state.translation_active {
+        translating_badge(ui, rect, lang);
+    }
+    // Tauri 的经典药丸只有「1px 中性描边」+「随音量轻微放大」两件事
+    // （Capsule.tsx 的 ClassicPill：border 1px var(--ol-capsule-pill-border)、
+    // transform scale(1 + ambient * 0.018)），**没有**任何外圈扫光/描边颜色变化。
+    // 所以这里不再把录音相位画成红圈（那是本仓自己加的，用户报「有一个红边」）；
+    // 运动感只保留药丸中心的音量波形。
+    let ambient = if phase == "recording" {
+        state.audio_level.unwrap_or(0.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let pill = egui::Rect::from_center_size(rect.center(), rect.size() * (1.0 + ambient * 0.018));
+    if !siri {
+        ui.painter().rect_filled(
+            pill,
+            egui::CornerRadius::same((pill_height / 2.0) as u8),
+            pill_bg,
+        );
+        ui.painter().rect_stroke(
+            pill,
+            egui::CornerRadius::same((pill_height / 2.0) as u8),
+            egui::Stroke::new(1.0, pill_border),
+            egui::StrokeKind::Inside,
+        );
+    }
+    // Siri is a clean, transparent listening indicator. The cancel /
+    // confirm affordances belong to the classic and Typeless capsules.
+    let center = if siri {
+        rect.shrink(3.0)
+    } else {
+        let inset = if typeless { 7.0 } else { 8.0 };
+        let cancel_rect = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + inset + button / 2.0, rect.center().y),
+            egui::vec2(button, button),
+        );
+        let cancel = ui.interact(
+            cancel_rect,
+            ui.id().with("openless-capsule-cancel"),
+            egui::Sense::click(),
+        );
+        let cancel_fill = if typeless {
+            TYPELESS_BUTTON_BG
+        } else {
+            theme::SURFACE_2
+        };
+        round_button(
+            ui,
+            cancel_rect,
+            icons::IconName::Close,
+            cancel.hovered(),
+            cancel_fill,
+            pill_ink,
+        );
+        if cancel.clicked() {
+            action = CapsuleAction::Cancel;
+        }
+        let confirm_rect = egui::Rect::from_center_size(
+            egui::pos2(rect.right() - inset - button / 2.0, rect.center().y),
+            egui::vec2(button, button),
+        );
+        let confirm = ui.interact(
+            confirm_rect,
+            ui.id().with("openless-capsule-confirm"),
+            egui::Sense::click(),
+        );
+        let (confirm_fill, confirm_ink) = if typeless {
+            (TYPELESS_INK, TYPELESS_BG)
+        } else {
+            (theme::SURFACE_2, theme::INK_2)
+        };
+        round_button(
+            ui,
+            confirm_rect,
+            icons::IconName::Check,
+            confirm.hovered(),
+            confirm_fill,
+            confirm_ink,
+        );
+        if confirm.clicked() {
+            action = CapsuleAction::Confirm;
+        }
+        egui::Rect::from_min_max(
+            egui::pos2(cancel_rect.right() + 4.0, rect.top() + 4.0),
+            egui::pos2(confirm_rect.left() - 4.0, rect.bottom() - 4.0),
+        )
+    };
+    let processing = matches!(
+        phase.as_str(),
+        "starting" | "transcribing" | "polishing" | "inserting"
+    );
+    if phase == "recording" {
+        // Siri capsules are a transparent overlay. Draw the spectral
+        // ribbons with egui primitives so they work on the Vulkan path
+        // too (the legacy GL shader callback is unavailable there).
+        let drive = siri_gl::SiriDrive {
+            level: state.audio_level.unwrap_or_default(),
+            resolved: 1.0,
+            speed: 1.0,
+            warming: state.audio_level.is_none(),
+        };
+        let dt = ui.input(|input| input.stable_dt);
+        let clock = siri_gl::tick(ui.ctx(), "capsule-siri-wave", drive, dt);
+        if siri {
+            let _ = siri_gl::paint(ui, center, siri_gl::SiriGlow::wave(clock.time, clock.level));
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(16));
+        } else {
+            audio_bars(
+                ui,
+                center,
+                state.audio_level.unwrap_or_default(),
+                bar_count,
+                pill_ink,
             );
-            let _ = ui.allocate_rect(rect, egui::Sense::hover());
-            if state.translation_active {
-                translating_badge(ui, rect, lang);
-            }
-            // Tauri 的经典药丸只有「1px 中性描边」+「随音量轻微放大」两件事
-            // （Capsule.tsx 的 ClassicPill：border 1px var(--ol-capsule-pill-border)、
-            // transform scale(1 + ambient * 0.018)），**没有**任何外圈扫光/描边颜色变化。
-            // 所以这里不再把录音相位画成红圈（那是本仓自己加的，用户报「有一个红边」）；
-            // 运动感只保留药丸中心的音量波形。
-            let ambient = if phase == "recording" {
-                state.audio_level.unwrap_or(0.0).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            let pill =
-                egui::Rect::from_center_size(rect.center(), rect.size() * (1.0 + ambient * 0.018));
-            if !siri {
-                ui.painter().rect_filled(
-                    pill,
-                    egui::CornerRadius::same((pill_height / 2.0) as u8),
-                    pill_bg,
-                );
-                ui.painter().rect_stroke(
-                    pill,
-                    egui::CornerRadius::same((pill_height / 2.0) as u8),
-                    egui::Stroke::new(1.0, pill_border),
-                    egui::StrokeKind::Inside,
-                );
-            }
-            // Siri is a clean, transparent listening indicator. The cancel /
-            // confirm affordances belong to the classic and Typeless capsules.
-            let center = if siri {
-                rect.shrink(3.0)
-            } else {
-                let inset = if typeless { 7.0 } else { 8.0 };
-                let cancel_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.left() + inset + button / 2.0, rect.center().y),
-                    egui::vec2(button, button),
-                );
-                let cancel = ui.interact(
-                    cancel_rect,
-                    ui.id().with("openless-capsule-cancel"),
-                    egui::Sense::click(),
-                );
-                let cancel_fill = if typeless {
-                    TYPELESS_BUTTON_BG
-                } else {
-                    theme::SURFACE_2
-                };
-                round_button(
-                    ui,
-                    cancel_rect,
-                    icons::IconName::Close,
-                    cancel.hovered(),
-                    cancel_fill,
-                    pill_ink,
-                );
-                if cancel.clicked() {
-                    action = CapsuleAction::Cancel;
-                }
-                let confirm_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.right() - inset - button / 2.0, rect.center().y),
-                    egui::vec2(button, button),
-                );
-                let confirm = ui.interact(
-                    confirm_rect,
-                    ui.id().with("openless-capsule-confirm"),
-                    egui::Sense::click(),
-                );
-                let (confirm_fill, confirm_ink) = if typeless {
-                    (TYPELESS_INK, TYPELESS_BG)
-                } else {
-                    (theme::SURFACE_2, theme::INK_2)
-                };
-                round_button(
-                    ui,
-                    confirm_rect,
-                    icons::IconName::Check,
-                    confirm.hovered(),
-                    confirm_fill,
-                    confirm_ink,
-                );
-                if confirm.clicked() {
-                    action = CapsuleAction::Confirm;
-                }
-                egui::Rect::from_min_max(
-                    egui::pos2(cancel_rect.right() + 4.0, rect.top() + 4.0),
-                    egui::pos2(confirm_rect.left() - 4.0, rect.bottom() - 4.0),
-                )
-            };
-            let processing = matches!(
-                phase.as_str(),
-                "starting" | "transcribing" | "polishing" | "inserting"
+        }
+    } else if processing {
+        // 思考中：Siri 流体圆点（orb），从 wave 收拢的光点化开成环。
+        let drive = siri_gl::SiriDrive {
+            level: 0.0,
+            resolved: 0.0,
+            speed: 1.3,
+            warming: false,
+        };
+        let dt = ui.input(|input| input.stable_dt);
+        let clock = siri_gl::tick(ui.ctx(), "capsule-siri-orb", drive, dt);
+        // 0.3s 全聚圆心接住 wave 收拢的光点，再缓缓散开成环。
+        let gather = (1.0 - (clock.time / 0.9).clamp(0.0, 1.0)).clamp(0.0, 1.0);
+        let glow = siri_gl::SiriGlow::orb(clock.time, gather);
+        if !use_gpu || !siri_gl::paint(ui, center, glow) {
+            ui.painter().text(
+                center.center(),
+                egui::Align2::CENTER_CENTER,
+                tr_l10n(lang, "capsule.thinking"),
+                egui::FontId::proportional(17.0),
+                theme::INK,
             );
-            if phase == "recording" {
-                // Siri capsules are a transparent overlay. Draw the spectral
-                // ribbons with egui primitives so they work on the Vulkan path
-                // too (the legacy GL shader callback is unavailable there).
-                let drive = siri_gl::SiriDrive {
-                    level: state.audio_level.unwrap_or_default(),
-                    resolved: 1.0,
-                    speed: 1.0,
-                    warming: state.audio_level.is_none(),
-                };
-                let dt = ui.input(|input| input.stable_dt);
-                let clock = siri_gl::tick(ui.ctx(), "capsule-siri-wave", drive, dt);
-                if siri {
-                    let _ = siri_gl::paint(
-                        ui,
-                        center,
-                        siri_gl::SiriGlow::wave(clock.time, clock.level),
-                    );
-                    ui.ctx()
-                        .request_repaint_after(std::time::Duration::from_millis(16));
-                } else {
-                    audio_bars(
-                        ui,
-                        center,
-                        state.audio_level.unwrap_or_default(),
-                        bar_count,
-                        pill_ink,
-                    );
-                }
-            } else if processing {
-                // 思考中：Siri 流体圆点（orb），从 wave 收拢的光点化开成环。
-                let drive = siri_gl::SiriDrive {
-                    level: 0.0,
-                    resolved: 0.0,
-                    speed: 1.3,
-                    warming: false,
-                };
-                let dt = ui.input(|input| input.stable_dt);
-                let clock = siri_gl::tick(ui.ctx(), "capsule-siri-orb", drive, dt);
-                // 0.3s 全聚圆心接住 wave 收拢的光点，再缓缓散开成环。
-                let gather = (1.0 - (clock.time / 0.9).clamp(0.0, 1.0)).clamp(0.0, 1.0);
-                let glow = siri_gl::SiriGlow::orb(clock.time, gather);
-                if !use_gpu || !siri_gl::paint(ui, center, glow) {
-                    ui.painter().text(
-                        center.center(),
-                        egui::Align2::CENTER_CENTER,
-                        tr_l10n(lang, "capsule.thinking"),
-                        egui::FontId::proportional(17.0),
-                        theme::INK,
-                    );
-                }
-            } else if state.text.is_empty() {
-                let label = if processing {
-                    tr_l10n(lang, "capsule.thinking")
-                } else if phase == "cancelled" {
-                    tr_l10n(lang, "capsule.cancelled")
-                } else if phase == "failed" {
-                    tr_l10n(lang, "capsule.error")
-                } else {
-                    tr_l10n(lang, "capsule.thinking")
-                };
-                let size = if processing { 17.0 } else { 11.0 };
-                ui.painter().text(
-                    center.center(),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(size),
-                    if phase == "failed" {
-                        theme::ERR
-                    } else if typeless {
-                        TYPELESS_INK
-                    } else {
-                        theme::INK
-                    },
-                );
+        }
+    } else if state.text.is_empty() {
+        let label = if processing {
+            tr_l10n(lang, "capsule.thinking")
+        } else if phase == "cancelled" {
+            tr_l10n(lang, "capsule.cancelled")
+        } else if phase == "failed" {
+            tr_l10n(lang, "capsule.error")
+        } else {
+            tr_l10n(lang, "capsule.thinking")
+        };
+        let size = if processing { 17.0 } else { 11.0 };
+        ui.painter().text(
+            center.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(size),
+            if phase == "failed" {
+                theme::ERR
+            } else if typeless {
+                TYPELESS_INK
             } else {
-                // 11px/500 单行居中，超长省略（Tauri `getCapsuleMessageLayout`）。
-                let galley =
-                    layout::text_galley(ui, &state.text, pill_ink, 11.0, center.width(), 1);
-                ui.painter().galley(
-                    egui::pos2(
-                        center.center().x - galley.rect.width() / 2.0,
-                        center.center().y - galley.rect.height() / 2.0,
-                    ),
-                    galley,
-                    pill_ink,
-                );
-            }
-        });
+                theme::INK
+            },
+        );
+    } else {
+        // 11px/500 单行居中，超长省略（Tauri `getCapsuleMessageLayout`）。
+        let galley = layout::text_galley(ui, &state.text, pill_ink, 11.0, center.width(), 1);
+        ui.painter().galley(
+            egui::pos2(
+                center.center().x - galley.rect.width() / 2.0,
+                center.center().y - galley.rect.height() / 2.0,
+            ),
+            galley,
+            pill_ink,
+        );
+    }
     action
 }
 

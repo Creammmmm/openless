@@ -30,6 +30,8 @@ pub enum FrontendAction {
     Navigate(Page),
     /// Open / close the in-window settings overlay.
     ToggleSettings,
+    DictationCancel(String),
+    DictationStop(String),
     PortalConnect,
     PortalConfigure,
     PortalDisconnect,
@@ -703,6 +705,9 @@ pub struct FrontendViewModel {
     pub history_query: String,
     pub history_selected: usize,
     pub history_entries: Vec<HistoryEntry>,
+    /// Current session feedback, rendered inside the main window.
+    #[serde(default)]
+    pub dictation_feedback: Option<(String, openless_linux_egui::CapsulePopupState)>,
     pub quick_note_recording: bool,
     /// Whether the dismissible shortcut card on the Quick Note page is hidden.
     pub quick_note_shortcut_hidden: bool,
@@ -912,6 +917,7 @@ impl Default for FrontendViewModel {
             history_query: String::new(),
             history_selected: 0,
             history_entries: Vec::new(),
+            dictation_feedback: None,
             quick_note_recording: false,
             quick_note_shortcut_hidden: false,
             history_loading: true,

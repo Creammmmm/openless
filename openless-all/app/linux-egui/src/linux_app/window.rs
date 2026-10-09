@@ -74,6 +74,10 @@ impl OpenLessEguiApp {
     pub(super) fn request_main_window(&mut self) {
         self.window.should_be_open = true;
         self.window.focus_requested = true;
+        // The same feedback is now rendered inside the main window.
+        if let Some(supervisor) = self.capsule_popup.take() {
+            let _ = supervisor.request_shutdown();
+        }
     }
 
     pub(super) fn focus_main_window(&mut self, bridge: &mut UiBridgeHost) {
@@ -189,6 +193,9 @@ impl OpenLessEguiApp {
                 WindowToHost::Bye => {
                     log::info!("[ui-host] UI window said goodbye; host keeps running");
                     self.window.should_be_open = false;
+                    if self.frontend_vm.dictation_feedback.is_some() {
+                        self.show_capsule_popup();
+                    }
                 }
             }
         }

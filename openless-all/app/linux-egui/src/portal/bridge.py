@@ -42,8 +42,13 @@ def missing_portal(error):
     ))
 
 
+def gnome_desktop():
+    desktops = os.environ.get("XDG_CURRENT_DESKTOP", "").lower().split(":")
+    return any(desktop in ("gnome", "ubuntu") for desktop in desktops)
+
+
 class GnomeShortcuts:
-    """GNOME 46 has custom shortcuts but no GlobalShortcuts portal backend.
+    """Use GNOME custom shortcuts consistently across desktop versions.
 
     Only our two paths are added/removed. Keep their key choices for reconnects;
     never replace the user's custom-keybindings list or unrelated entries.
@@ -52,9 +57,8 @@ class GnomeShortcuts:
     PREFIX = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/openless-"
 
     def __init__(self, executable):
-        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower().split(":")
         source = Gio.SettingsSchemaSource.get_default()
-        if "gnome" not in desktop or not source or not source.lookup(self.SCHEMA, True):
+        if not gnome_desktop() or not source or not source.lookup(self.SCHEMA, True):
             raise RuntimeError("Global shortcuts are unavailable on this desktop")
         if not executable or not os.path.isfile(executable):
             raise RuntimeError("OpenLess executable is unavailable for GNOME shortcuts")
@@ -350,6 +354,11 @@ class Bridge:
         self.create_input()
 
     def create_shortcuts(self):
+        # Ubuntu/GNOME always uses the same persistent keybindings and system
+        # editor, regardless of the GlobalShortcuts portal interface version.
+        if gnome_desktop():
+            self.create_legacy_shortcuts()
+            return
         options = {"session_handle_token": GLib.Variant("s", "ol_" + uuid.uuid4().hex)}
         def created(result, error):
             if missing_portal(error):
@@ -562,6 +571,13 @@ class Bridge:
         if op == "connect":
             self.connect()
         elif op == "configure":
+            if gnome_desktop():
+                try:
+                    GnomeShortcuts.configure()
+                    self.status()
+                except GLib.Error as error:
+                    self.status(str(error))
+                return
             session = self.sessions.get("shortcuts")
             def configured(_value, error):
                 if missing_portal(error):

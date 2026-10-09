@@ -665,7 +665,7 @@ pub struct QaPopupState {
     pub viewer_login: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CapsulePopupState {
     pub phase: String,
     pub text: String,

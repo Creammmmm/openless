@@ -97,6 +97,13 @@ struct LinuxActiveRecording {
 
 impl Drop for LinuxActiveRecording {
     fn drop(&mut self) {
+        // Cancellation or a dropped stop future must also release capture.
+        // Dropping a JoinHandle only detaches its thread; without this signal
+        // the microphone (and a Bluetooth headset's HFP profile) stays open.
+        self.stop.store(true, std::sync::atomic::Ordering::Release);
+        if let Some(thread) = &self.thread {
+            thread.thread().unpark();
+        }
         // Taking the guard here forces the field to be consumed (and therefore
         // restored) even if `stop()` is never reached — e.g. the handle is
         // dropped directly on an early error or during Core shutdown before it
@@ -164,6 +171,9 @@ impl ActiveRecording for LinuxActiveRecording {
         Box::pin(async move {
             self.stop.store(true, std::sync::atomic::Ordering::Release);
             let thread = self.thread.take();
+            if let Some(thread) = &thread {
+                thread.thread().unpark();
+            }
             let runtime_error = Arc::clone(&self.runtime_error);
             tokio::task::spawn_blocking(move || {
                 if let Some(thread) = thread {
@@ -313,27 +323,35 @@ fn run_audio_thread(
         else {
             continue;
         };
-        let host = match cpal::host_from_id(host_id) {
-            Ok(host) => host,
-            Err(error) => {
-                result = Err(classify_audio_error(
-                    &format!("initialize {backend} backend"),
-                    error.to_string(),
-                ));
-                log::warn!("{backend} audio backend unavailable: {error}");
-                continue;
-            }
+        // Bluetooth profile changes replace PipeWire/PulseAudio nodes. CPAL
+        // snapshots devices when the host is created, so every bounded startup
+        // retry must create a fresh host instead of reusing a vanished node.
+        let attempt = || {
+            // A failed stream may have invoked its error callback before being
+            // destroyed. Startup has not published a recording handle yet.
+            stop.store(false, std::sync::atomic::Ordering::Release);
+            runtime_error
+                .lock()
+                .expect("Linux recorder error lock poisoned")
+                .take();
+            let host = cpal::host_from_id(host_id).map_err(|error| {
+                classify_audio_error(&format!("initialize {backend} backend"), error.to_string())
+            })?;
+            try_start_audio_stream(
+                &host,
+                backend,
+                preferred_device_name.as_deref(),
+                &consumer,
+                &progress,
+                &writer,
+                &stop,
+                &runtime_error,
+            )
         };
-        match try_start_audio_stream(
-            &host,
-            backend,
-            preferred_device_name.as_deref(),
-            &consumer,
-            &progress,
-            &writer,
-            &stop,
-            &runtime_error,
-        ) {
+        let attempts = if backend == "alsa" { 1 } else { 3 };
+        match retry_audio_start(attempt, attempts, || {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }) {
             Ok(stream) => {
                 result = Ok(stream);
                 break;
@@ -366,6 +384,24 @@ fn audio_backend_order() -> [&'static str; 3] {
     // Native desktop servers are preferred because they handle device policy,
     // hot-plugging and format conversion. ALSA remains the universal fallback.
     ["pipewire", "pulseaudio", "alsa"]
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn retry_audio_start<T>(
+    mut start: impl FnMut() -> Result<T, BackendError>,
+    attempts: usize,
+    mut wait: impl FnMut(),
+) -> Result<T, BackendError> {
+    for attempt in 1..attempts {
+        match start() {
+            Err(error) if error.code == BackendErrorCode::Platform => {
+                log::debug!("audio startup attempt {attempt} failed: {error}");
+                wait();
+            }
+            result => return result,
+        }
+    }
+    start()
 }
 
 #[cfg(target_os = "linux")]
@@ -459,6 +495,7 @@ fn build_input_stream(
             let consumer = Arc::clone(&consumer);
             let progress = Arc::clone(&progress);
             let stop_for_error = Arc::clone(&stop);
+            let stop_for_data = Arc::clone(&stop);
             let runtime_error = Arc::clone(&runtime_error);
             let writer = writer.clone();
             let started = std::time::Instant::now();
@@ -467,6 +504,9 @@ fn build_input_stream(
                 .build_input_stream::<$sample, _, _>(
                     *config,
                     move |data: &[$sample], _| {
+                        if stop_for_data.load(std::sync::atomic::Ordering::Acquire) {
+                            return;
+                        }
                         let samples = data.iter().copied().map($to_f32).collect::<Vec<f32>>();
                         if let Some(chunk) =
                             normalizer.process(&samples, channels, input_sample_rate)
@@ -658,9 +698,117 @@ mod tests {
         assert_eq!(canonical_wav_pcm(&wav).unwrap(), pcm);
     }
 
+    #[test]
+    fn audio_start_retries_transient_device_loss_but_not_permission_denial() {
+        let mut calls = 0;
+        let mut waits = 0;
+        let result = retry_audio_start(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(classify_audio_error("start", "device disappeared".into()))
+                } else {
+                    Ok(())
+                }
+            },
+            3,
+            || waits += 1,
+        );
+        assert!(result.is_ok());
+        assert_eq!((calls, waits), (3, 2));
+
+        calls = 0;
+        waits = 0;
+        let result: Result<(), _> = retry_audio_start(
+            || {
+                calls += 1;
+                Err(classify_audio_error("start", "Permission denied".into()))
+            },
+            3,
+            || waits += 1,
+        );
+        assert_eq!(result.unwrap_err().code, BackendErrorCode::PermissionDenied);
+        assert_eq!((calls, waits), (1, 0));
+    }
+
+    #[test]
+    fn audio_start_retry_is_bounded_when_the_device_does_not_return() {
+        let mut calls = 0;
+        let mut waits = 0;
+        let result: Result<(), _> = retry_audio_start(
+            || {
+                calls += 1;
+                Err(classify_audio_error("start", "device disappeared".into()))
+            },
+            3,
+            || waits += 1,
+        );
+        assert_eq!(result.unwrap_err().code, BackendErrorCode::Platform);
+        assert_eq!((calls, waits), (3, 2));
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn audio_backends_are_ordered_from_desktop_server_to_universal_fallback() {
         assert_eq!(audio_backend_order(), ["pipewire", "pulseaudio", "alsa"]);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn dropping_a_recording_releases_the_capture_thread() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&stop);
+        let (released_tx, released_rx) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            while !thread_stop.load(Ordering::Acquire) {
+                std::thread::park_timeout(std::time::Duration::from_millis(25));
+            }
+            released_tx.send(()).unwrap();
+        });
+        let recording = LinuxActiveRecording {
+            stop: Arc::clone(&stop),
+            thread: Some(thread),
+            runtime_error: Arc::new(std::sync::Mutex::new(None)),
+            archive: None,
+            mute: None,
+        };
+        drop(recording);
+        let released = released_rx.recv_timeout(std::time::Duration::from_secs(2));
+        // Also clean up the thread when this regression test fails.
+        stop.store(true, Ordering::Release);
+        assert!(
+            released.is_ok(),
+            "a dropped handle must not leave capture running"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn dropping_an_unpolled_stop_future_also_releases_capture() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = Arc::clone(&stop);
+        let (released_tx, released_rx) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            while !thread_stop.load(Ordering::Acquire) {
+                std::thread::park_timeout(std::time::Duration::from_millis(25));
+            }
+            released_tx.send(()).unwrap();
+        });
+        let recording = Box::new(LinuxActiveRecording {
+            stop: Arc::clone(&stop),
+            thread: Some(thread),
+            runtime_error: Arc::new(std::sync::Mutex::new(None)),
+            archive: None,
+            mute: None,
+        });
+        drop(recording.stop());
+        let released = released_rx.recv_timeout(std::time::Duration::from_secs(2));
+        stop.store(true, Ordering::Release);
+        assert!(
+            released.is_ok(),
+            "cancelling stop must not leave the microphone open"
+        );
     }
 }

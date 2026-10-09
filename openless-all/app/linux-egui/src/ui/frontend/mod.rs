@@ -130,6 +130,33 @@ pub fn render(ctx: &egui::Context, vm: &mut FrontendViewModel, actions: &mut Vec
                 });
         }
     });
+
+    // Use window-local coordinates and paint above the settings overlay. The
+    // recording animation stays visible even without GNOME layer-shell support.
+    if let Some((session, state)) = vm
+        .dictation_feedback
+        .as_ref()
+        .filter(|_| vm.settings.show_capsule)
+    {
+        egui::Area::new(egui::Id::new("main-dictation-feedback"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -16.0))
+            .movable(false)
+            .show(ctx, |ui| {
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(200.0, 100.0), egui::Sense::hover());
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                match popups::capsule_contents(&mut child, state, vm.lang) {
+                    popups::CapsuleAction::Cancel => {
+                        actions.push(FrontendAction::DictationCancel(session.clone()))
+                    }
+                    popups::CapsuleAction::Confirm => {
+                        actions.push(FrontendAction::DictationStop(session.clone()))
+                    }
+                    popups::CapsuleAction::None => {}
+                }
+            });
+    }
 }
 
 /// egui 0.36 起 `FullOutput` 里的 `TexturesDelta` 必须被消费，未应用就 drop 会
@@ -158,6 +185,71 @@ pub(crate) fn end_pass(ctx: &egui::Context) -> egui::FullOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dictation_wave_stays_inside_the_main_window_above_settings() {
+        for size in [egui::vec2(1300.0, 835.0), egui::vec2(960.0, 640.0)] {
+            for settings_open in [false, true] {
+                let ctx = egui::Context::default();
+                let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
+                let indicator = egui::Rect::from_center_size(
+                    egui::pos2(screen.center().x, screen.bottom() - 66.0),
+                    egui::vec2(200.0, 100.0),
+                );
+                let mut vm = FrontendViewModel {
+                    settings_open,
+                    dictation_feedback: Some((
+                        "session".into(),
+                        openless_linux_egui::CapsulePopupState {
+                            phase: "recording".into(),
+                            style: "siri".into(),
+                            audio_level: Some(0.6),
+                            ..Default::default()
+                        },
+                    )),
+                    ..Default::default()
+                };
+                let mut waves = 0;
+                for _ in 0..3 {
+                    let output = run_pass(
+                        &ctx,
+                        egui::RawInput {
+                            screen_rect: Some(screen),
+                            ..Default::default()
+                        },
+                        |_| render(&ctx, &mut vm, &mut Vec::new()),
+                    );
+                    waves = 0;
+                    for clipped in output.shapes {
+                        if let egui::Shape::Path(path) = clipped.shape {
+                            // The settings page has its own style preview;
+                            // inspect the ribbon clipped to the main indicator.
+                            if path.points.len() == 49
+                                && !path.closed
+                                && path.points.last().unwrap().x - path.points[0].x > 150.0
+                                && indicator.contains_rect(clipped.clip_rect)
+                            {
+                                waves += 1;
+                                for point in path.points {
+                                    assert!(
+                                        screen.contains(point),
+                                        "wave outside window: {point:?}"
+                                    );
+                                    assert!(point.y > screen.bottom() - 140.0, "unexpected wave position {point:?}, settings={settings_open}, size={size:?}");
+                                    assert!(point.y < screen.bottom() - 16.0);
+                                    assert!(clipped.clip_rect.contains(point));
+                                }
+                            }
+                        }
+                    }
+                }
+                assert!(
+                    waves > 0,
+                    "recording wave must be visible with settings={settings_open}"
+                );
+            }
+        }
+    }
 
     fn viewport() -> egui::Rect {
         egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1240.0, 800.0))

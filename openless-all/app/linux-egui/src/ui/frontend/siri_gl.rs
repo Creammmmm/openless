@@ -192,7 +192,10 @@ pub fn paint(ui: &egui::Ui, rect: egui::Rect, glow: SiriGlow) -> bool {
                 let points = (0..=48)
                     .map(|step| {
                         let t = step as f32 / 48.0;
-                        let envelope = (std::f32::consts::PI * t).sin().powf(0.7);
+                        // sin(PI) can round slightly below zero. Fractional
+                        // powers of that value produce NaN vertices, which
+                        // can make a renderer discard the entire ribbon.
+                        let envelope = (std::f32::consts::PI * t).sin().max(0.0).powf(0.7);
                         let y = center_y
                             + (glow.time * 2.1 + t * 10.0 + phase).sin() * amplitude * envelope;
                         egui::pos2(rect.left() + rect.width() * t, y)

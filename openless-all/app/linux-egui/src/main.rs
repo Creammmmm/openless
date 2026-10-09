@@ -1011,6 +1011,13 @@ mod linux_app {
         }
 
         fn ensure_popup(&mut self, kind: PopupKind) {
+            if kind == PopupKind::Capsule
+                && (self.window.should_be_open
+                    || openless_linux_egui::detect_capsule_path()
+                        == openless_linux_egui::CapsulePath::PlainWindow)
+            {
+                return;
+            }
             let lang = self.lang;
             if self.popup_slot(kind).is_some() {
                 return;
@@ -1028,8 +1035,31 @@ mod linux_app {
         fn send_popup(&mut self, kind: PopupKind, message: HostToPopup) {
             let lang = self.lang;
             // 记录胶囊当前承载的会话：兜底收起要靠它判断「会话是否还在快照里」。
-            if let HostToPopup::Capsule { session_id, .. } = &message {
+            if let HostToPopup::Capsule {
+                session_id,
+                phase,
+                text,
+                audio_level,
+                translation_active,
+                style,
+                ..
+            } = &message
+            {
                 self.capsule_session = Some(session_id.clone());
+                if self.capsule_enabled() {
+                    self.frontend_vm.dictation_feedback = Some((
+                        session_id.clone(),
+                        openless_linux_egui::CapsulePopupState {
+                            phase: phase.clone(),
+                            text: text.clone(),
+                            audio_level: *audio_level,
+                            translation_active: *translation_active,
+                            style: style.clone(),
+                        },
+                    ));
+                }
+            } else if kind == PopupKind::Capsule && matches!(message, HostToPopup::Hide { .. }) {
+                self.frontend_vm.dictation_feedback = None;
             }
             let retry = message.clone();
             if let Some(supervisor) = self.popup_slot(kind) {
@@ -1389,6 +1419,7 @@ mod linux_app {
             }
             *self.popup_slot(PopupKind::Capsule) = None;
             self.capsule_session = None;
+            self.frontend_vm.dictation_feedback = None;
             self.capsule_dismissal_scheduled = None;
             // 这条日志缺失 = 收起决定没走到「结束弹窗进程」这一环。
             log::info!("capsule: dismissal applied (popup process was running: {had_process})");
@@ -4814,6 +4845,29 @@ mod linux_app {
                     frontend::view_model::FrontendAction::QuickNoteToggle => {
                         self.toggle_quick_note();
                     }
+                    frontend::view_model::FrontendAction::DictationCancel(ref id)
+                    | frontend::view_model::FrontendAction::DictationStop(ref id) => {
+                        let session = self
+                            .snapshot
+                            .as_ref()
+                            .and_then(|snapshot| snapshot.dictation.session_id)
+                            .filter(|session| session.to_string() == *id);
+                        if let (Some(backend), Some(session)) = (self.backend(), session) {
+                            let cancel = matches!(
+                                action,
+                                frontend::view_model::FrontendAction::DictationCancel(_)
+                            );
+                            self.spawn(async move {
+                                let result = if cancel {
+                                    backend.cancel_dictation(Some(session)).await.map(|_| ())
+                                } else {
+                                    backend.stop_dictation_session(session).await.map(|_| ())
+                                };
+                                normalize_stop_result(result)?;
+                                Ok(String::new())
+                            });
+                        }
+                    }
                     frontend::view_model::FrontendAction::QuickNoteShortcutHidden(hidden) => {
                         self.set_quick_note_shortcut_hidden(hidden);
                     }
@@ -8115,6 +8169,43 @@ Internal flags (set by OpenLess itself, not for regular use):
                 None,
                 window_should_be_open,
             )
+        }
+
+        #[test]
+        fn main_window_feedback_survives_without_a_desktop_popup_and_dismisses() {
+            let mut app = fixture_app(true);
+            app.ensure_popup(PopupKind::Capsule);
+            assert!(app.capsule_popup.is_none());
+            app.send_popup(
+                PopupKind::Capsule,
+                HostToPopup::Capsule {
+                    version: POPUP_PROTOCOL_VERSION,
+                    session_id: "fixture-session".into(),
+                    sequence: 1,
+                    phase: "Recording".into(),
+                    text: String::new(),
+                    audio_level: Some(0.5),
+                    translation_active: true,
+                    style: "siri".into(),
+                },
+            );
+            app.sync_view_model();
+            let (session, state) = app.frontend_vm.dictation_feedback.as_ref().unwrap();
+            assert_eq!(session, "fixture-session");
+            assert_eq!(state.phase, "Recording");
+            assert_eq!(state.audio_level, Some(0.5));
+            assert!(state.translation_active);
+            // This state crosses the host/UI process boundary as JSON.
+            let payload = serde_json::to_vec(&app.frontend_vm).unwrap();
+            let decoded: frontend::view_model::FrontendViewModel =
+                serde_json::from_slice(&payload).unwrap();
+            assert_eq!(
+                decoded.dictation_feedback,
+                app.frontend_vm.dictation_feedback
+            );
+            app.dismiss_capsule();
+            assert!(app.frontend_vm.dictation_feedback.is_none());
+            assert!(app.capsule_session.is_none());
         }
 
         /// 快捷键卡片上的每一行都必须从 Core 偏好取真值。宿主以前只填了

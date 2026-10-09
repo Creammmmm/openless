@@ -163,7 +163,8 @@ class PortalTests(unittest.TestCase):
             p = fixture()
             p.request = Mock()
             p.create_legacy_shortcuts = Mock()
-            p.create_shortcuts()
+            with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "KDE"}):
+                p.create_shortcuts()
             p.request.call_args.args[-1](None, error)
             self.assertEqual(p.create_legacy_shortcuts.call_count, expected)
 
@@ -204,10 +205,41 @@ class PortalTests(unittest.TestCase):
     def test_missing_configure_method_opens_gnome_keyboard_settings(self):
         p = fixture()
         p.call = Mock()
-        with patch.object(bridge.GnomeShortcuts, "configure") as configure:
+        with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "KDE"}), \
+             patch.object(bridge.GnomeShortcuts, "configure") as configure:
             p.command({"op": "configure"})
             p.call.call_args.args[-1](None, "org.freedesktop.DBus.Error.UnknownMethod")
             configure.assert_called_once()
+
+    def test_gnome_versions_use_custom_shortcuts_without_portal_requests(self):
+        for desktop in ("ubuntu:GNOME", "GNOME", "ubuntu"):
+            p = fixture()
+            p.request = Mock()
+            p.create_legacy_shortcuts = Mock()
+            with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": desktop}):
+                p.create_shortcuts()
+            p.request.assert_not_called()
+            p.create_legacy_shortcuts.assert_called_once()
+
+    def test_gnome_configure_bypasses_missing_portal_method_and_clears_error(self):
+        for connected in (True, False):
+            p = fixture()
+            p.call = Mock()
+            if not connected:
+                p.sessions = {}
+            with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "ubuntu:GNOME"}), \
+                 patch.object(bridge.GnomeShortcuts, "configure") as configure:
+                p.command({"op": "configure"})
+            configure.assert_called_once()
+            p.call.assert_not_called()
+            self.assertEqual(p.emit.call_args.kwargs["message"], "")
+
+    def test_gnome_configure_reports_failure_to_open_settings(self):
+        p = fixture()
+        with patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "GNOME"}), \
+             patch.object(bridge.GnomeShortcuts, "configure", side_effect=bridge.GLib.Error("missing settings")):
+            p.command({"op": "configure"})
+        self.assertIn("missing settings", p.emit.call_args.kwargs["message"])
 
     def test_global_shortcut_repeat_is_one_toggle_until_release(self):
         p = fixture()
